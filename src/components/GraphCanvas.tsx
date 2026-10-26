@@ -1,5 +1,5 @@
 import { forceCollide, forceRadial } from "d3-force";
-import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type MutableRefObject, type PointerEvent as ReactPointerEvent } from "react";
 import ForceGraph2D, { type ForceGraphMethods } from "react-force-graph-2d";
 import { graphTheme, nodeColor, withAlpha } from "../graph/colors";
 import { collapsedChildCount, hiddenByCollapse, isFiltered, linkEnds } from "../graph/visibility";
@@ -365,6 +365,35 @@ export default function GraphCanvas({
     return () => host.removeEventListener("auxclick", block);
   }, []);
 
+  // Wheel zoom toward viewport center (not cursor). Library wheel zooms at pointer.
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const fg = graphRef.current as (GraphHandle & { zoom?: (k?: number, ms?: number) => number }) | undefined;
+      if (!fg?.zoom) return;
+      const k0 = fg.zoom();
+      if (typeof k0 !== "number" || !(k0 > 0)) return;
+      const delta =
+        -e.deltaY * (e.deltaMode === 1 ? 0.05 : e.deltaMode ? 1 : 0.002) * (e.ctrlKey ? 10 : 1);
+      const k1 = Math.max(0.12, Math.min(8, k0 * Math.pow(2, delta)));
+      if (k1 === k0) return;
+      // zoom() uses d3 scaleTo without a point → scales about viewport centroid
+      fg.zoom(k1);
+    };
+    host.addEventListener("wheel", onWheel, { passive: false, capture: true });
+    return () => host.removeEventListener("wheel", onWheel, { capture: true });
+  }, [graphRef]);
+
+  function startPan(e: ReactPointerEvent<HTMLDivElement>) {
+    const c = graphRef.current?.centerAt?.() ?? { x: 0, y: 0 };
+    interaction.current = { type: "pan", sx: e.clientX, sy: e.clientY, cx: c.x, cy: c.y };
+    setGesture("pan");
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }
+
   return (
     <div
       ref={hostRef}
@@ -373,14 +402,10 @@ export default function GraphCanvas({
         if (placeArmed || connectArmed) return;
         if (e.button === 1) {
           e.preventDefault();
-          const c = graphRef.current?.centerAt?.() ?? { x: 0, y: 0 };
-          interaction.current = { type: "pan", sx: e.clientX, sy: e.clientY, cx: c.x, cy: c.y };
-          setGesture("pan");
-          (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+          startPan(e);
           return;
         }
         if (e.button !== 0) return;
-        if (spaceHeld.current || e.altKey) return;
         const target = e.target as HTMLElement | null;
         if (target?.closest(".plus-wrap, .canvas-tools, .sidebar, .item-actions, .edit-float, .ctx, .omp-header")) return;
         if (nodeAt(e.clientX, e.clientY)) return;
@@ -391,21 +416,26 @@ export default function GraphCanvas({
           interaction.current = { type: "group", lastX: g.x, lastY: g.y };
           setGesture("group");
           skipBg.current = true;
-          (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+          e.currentTarget.setPointerCapture(e.pointerId);
           return;
         }
-        interaction.current = {
-          type: "marquee",
-          x0: g.x,
-          y0: g.y,
-          x1: g.x,
-          y1: g.y,
-          additive: e.shiftKey,
-          sx0: e.clientX,
-          sy0: e.clientY,
-        };
-        setGesture("marquee");
-        (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+        // Shift+drag = marquee select; plain click/hold drag (or Space/Alt) = pan
+        if (e.shiftKey && !spaceHeld.current && !e.altKey) {
+          interaction.current = {
+            type: "marquee",
+            x0: g.x,
+            y0: g.y,
+            x1: g.x,
+            y1: g.y,
+            additive: true,
+            sx0: e.clientX,
+            sy0: e.clientY,
+          };
+          setGesture("marquee");
+          e.currentTarget.setPointerCapture(e.pointerId);
+          return;
+        }
+        startPan(e);
       }}
       onPointerMove={(e) => {
         if (placeArmed || connectFrom) cursorGraph.current = graphAtClient(e.clientX, e.clientY);
@@ -424,6 +454,7 @@ export default function GraphCanvas({
           skipBg.current = true;
         } else if (it.type === "pan") {
           const k = zoomK();
+          if (Math.hypot(e.clientX - it.sx, e.clientY - it.sy) > 5) skipBg.current = true;
           graphRef.current?.centerAt(it.cx - (e.clientX - it.sx) / k, it.cy - (e.clientY - it.sy) / k);
         }
       }}
@@ -454,6 +485,15 @@ export default function GraphCanvas({
           onMarquee(ids, it.additive);
         } else if (it.type === "group") {
           onGroupMoveEnd(selectedPositions());
+        } else if (it.type === "pan") {
+          if (Math.hypot(e.clientX - it.sx, e.clientY - it.sy) < 5) {
+            skipBg.current = true;
+            const g = graphAtClient(e.clientX, e.clientY);
+            const now = Date.now();
+            const dbl = Boolean(lastClick.current && lastClick.current.key === "__bg__" && now - lastClick.current.t < 340);
+            lastClick.current = { key: "__bg__", t: now };
+            onBackground(e.clientX, e.clientY, g, dbl);
+          }
         }
       }}
       onPointerLeave={() => {
@@ -476,7 +516,8 @@ export default function GraphCanvas({
       minZoom={0.12}
       maxZoom={8}
       enableNodeDrag
-      enablePanInteraction={(ev) => spaceHeld.current || ev.altKey}
+      enablePanInteraction={false}
+      enableZoomInteraction={false}
       autoPauseRedraw={false}
       warmupTicks={settings.physics ? 20 : 0}
       nodeCanvasObjectMode={() => "replace"}

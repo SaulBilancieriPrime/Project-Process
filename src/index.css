@@ -170,6 +170,8 @@ body {
 .graph-host.is-grab canvas { cursor: grabbing !important; }
 .graph-host.is-pan,
 .graph-host.is-pan canvas { cursor: grab !important; }
+.graph-host.is-pan:active,
+.graph-host.is-pan:active canvas { cursor: grabbing !important; }
 
 .plus-wrap {
   position: absolute;
