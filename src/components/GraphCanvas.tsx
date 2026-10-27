@@ -34,6 +34,7 @@ type Props = {
   onEditLink: (id: string) => void;
   onNodeMenu: (id: string, x: number, y: number) => void;
   onLinkMenu: (id: string, x: number, y: number) => void;
+  onBackgroundMenu: (x: number, y: number) => void;
   onBackground: (x: number, y: number, graph: { x: number; y: number }, dbl: boolean) => void;
   onDragEnd: (id: string, x: number, y: number) => void;
   onConnectTarget: (id: string) => void;
@@ -153,6 +154,7 @@ export default function GraphCanvas({
   onEditLink,
   onNodeMenu,
   onLinkMenu,
+  onBackgroundMenu,
   onBackground,
   onDragEnd,
   onConnectTarget,
@@ -369,6 +371,14 @@ export default function GraphCanvas({
     <div
       ref={hostRef}
       className={`graph-host${placeArmed || connectArmed ? " is-draw" : ""}${gesture === "marquee" ? " is-select" : ""}${gesture === "group" ? " is-grab" : ""}${gesture === "pan" ? " is-pan" : ""}`}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        const target = e.target as HTMLElement | null;
+        if (target?.closest(".plus-wrap, .canvas-tools, .sidebar, .item-actions, .edit-float, .ctx, .omp-header")) return;
+        if (nodeAt(e.clientX, e.clientY)) return;
+        if (linkAt(e.clientX, e.clientY)) return;
+        onBackgroundMenu(e.clientX, e.clientY);
+      }}
       onPointerDown={(e) => {
         if (placeArmed || connectArmed) return;
         if (e.button === 1) {

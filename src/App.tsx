@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import CanvasTools from "./components/CanvasTools";
+import PlusMenu from "./components/PlusMenu";
+import PlusMenuButton from "./components/PlusMenuButton";
 import GraphCanvas, { type GraphHandle } from "./components/GraphCanvas";
 import Header from "./components/Header";
 import InfoPanel from "./components/InfoPanel";
@@ -20,7 +22,8 @@ import type { ArrowStyle, GraphLink, GraphNode, GraphSettings, NodeKind } from "
 
 type MenuState =
   | { kind: "node"; id: string; x: number; y: number }
-  | { kind: "link"; id: string; x: number; y: number };
+  | { kind: "link"; id: string; x: number; y: number }
+  | { kind: "canvas"; x: number; y: number };
 
 type PickState = { kind: "node" | "link"; id: string };
 
@@ -487,6 +490,10 @@ export default function App() {
               setMenu({ kind: "node", id, x, y });
             }}
             onLinkMenu={(id, x, y) => setMenu({ kind: "link", id, x, y })}
+            onBackgroundMenu={(x, y) => {
+              setPlusOpen(false);
+              setMenu({ kind: "canvas", x, y });
+            }}
             onBackground={(_x, _y, graph, dbl) => {
               if (placing) {
                 addLooseNode(graph);
@@ -571,14 +578,20 @@ export default function App() {
           </div>
         )}
 
+        <PlusMenuButton
+          open={plusOpen}
+          armed={placing || Boolean(connect)}
+          onOpen={(open) => {
+            if (open) setMenu(null);
+            setPlusOpen(open);
+          }}
+          onAddNode={startPlace}
+          onLink={(arrows) => startLink(arrows)}
+        />
+
         <CanvasTools
           physics={settings.physics}
           cardInfo={Boolean(settings.cardInfo)}
-          plusOpen={plusOpen}
-          armed={placing || Boolean(connect)}
-          onPlusOpen={setPlusOpen}
-          onAddNode={startPlace}
-          onLink={(arrows) => startLink(arrows)}
           onFit={fitGraph}
           onReorg={reheat}
           onPhysics={() => {
@@ -733,6 +746,16 @@ export default function App() {
           >
             Delete connection
           </button>
+        </div>
+      )}
+
+      {menu?.kind === "canvas" && (
+        <div className="plus-menu plus-menu-floating" style={{ left: menu.x, top: menu.y }}>
+          <PlusMenu
+            onAddNode={startPlace}
+            onLink={(arrows) => startLink(arrows)}
+            onClose={() => setMenu(null)}
+          />
         </div>
       )}
 

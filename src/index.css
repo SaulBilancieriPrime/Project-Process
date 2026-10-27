@@ -178,15 +178,21 @@ body {
   z-index: 9;
 }
 .plus-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
   min-width: 176px;
   padding: 6px;
   border-radius: 10px;
   background: var(--card);
   border: 1px solid var(--line);
   box-shadow: var(--shadow);
+}
+.plus-wrap .plus-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+}
+.plus-menu-floating {
+  position: fixed;
+  z-index: 40;
 }
 html[data-theme="dark"] .plus-menu {
   background: #353331;
@@ -199,6 +205,14 @@ html[data-theme="dark"] .plus-menu {
   gap: 8px;
   width: 100%;
   text-align: left;
+  font-family: var(--font);
+  font-size: 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 7px 8px;
+  border-radius: 8px;
+  cursor: pointer;
 }
 .plus-label {
   margin: 8px 6px 4px;
@@ -223,7 +237,7 @@ html[data-theme="dark"] .plus-menu {
   backdrop-filter: blur(10px);
 }
 .stage.has-side .canvas-tools { right: 308px; }
-.plus-menu button, .canvas-tools button, .side-btn, .ghost {
+.canvas-tools button, .side-btn, .ghost {
   font-family: var(--font);
   font-size: 12px;
   border: 1px solid var(--line);
