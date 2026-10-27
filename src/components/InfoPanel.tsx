@@ -16,7 +16,7 @@ export default function InfoPanel({ open, onClose }: Props) {
         <h3>Zoom</h3>
         <p>The graph always stays dots. Labels stay a standard size. Turn on Cards in the bottom right and zoom in — cards appear on their own as you get closer. Enlarge in the panel scales type and bubbles.</p>
         <h3>Save</h3>
-        <p>The graph writes itself to this browser as you work. Save snapshots on demand. Export / Import JSON to move a graph between machines. Sample reloads the five-level project process.</p>
+        <p>The graph writes itself to this browser as you work. Save snapshots on demand. Export / Import JSON to move a graph between machines. Sample reloads the PRIME PM activity workflow tree.</p>
       </div>
     </aside>
   );

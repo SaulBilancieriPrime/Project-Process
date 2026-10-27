@@ -1,28 +1,302 @@
 import { DEFAULT_SETTINGS, type GraphDocument, type GraphLink, type GraphNode, type NodeKind } from "./types";
 
 export const LIFECYCLE_ORANGE = "#e67e22";
-const HIRE = "#5b9bd5";
-const SOURCE = "#8b5cf6";
-const WORK = "#e67e22";
-const GROW = "#34d399";
-const RISK = "#f43f5e";
-const EXIT = "#94a3b8";
 
-function dot(
+const PURSUIT = "#9333ea";
+const DELIVERY = "#ca8a04";
+const BUSINESS = "#dc2626";
+const LEADERSHIP = "#ea580c";
+const ROOT_COLOR = "#64748b";
+
+type WorkflowBranch = {
+  id: string;
+  title: string;
+  color: string;
+  workflows: { id: string; title: string; activities: string[] }[];
+};
+
+const PRIME_PM_TREE: WorkflowBranch[] = [
+  {
+    id: "pursuit",
+    title: "1.0 Pursuit (Win Work)",
+    color: PURSUIT,
+    workflows: [
+      {
+        id: "1.1",
+        title: "1.1 Pursue Opportunity",
+        activities: [
+          "Market Awareness",
+          "Lead Identification",
+          "Client Engagement",
+          "Opportunity Qualification",
+          "Go / No-Go Decision",
+          "Pursuit Strategy",
+        ],
+      },
+      {
+        id: "1.2",
+        title: "1.2 Develop Proposal",
+        activities: [
+          "Scope Development",
+          "Fee Development",
+          "Schedule Development",
+          "Resource Planning",
+          "Proposal Writing",
+          "Proposal Submission",
+          "Proposal Review",
+        ],
+      },
+      {
+        id: "1.3",
+        title: "1.3 Contract & Risk",
+        activities: [
+          "Contract Review",
+          "Contract Execution",
+          "Terms & Conditions",
+          "Subconsultant Agreements",
+          "Risk Assessment",
+          "Insurance Requirements",
+          "Legal Coordination",
+        ],
+      },
+    ],
+  },
+  {
+    id: "delivery",
+    title: "2.0 Delivery (Deliver Work)",
+    color: DELIVERY,
+    workflows: [
+      {
+        id: "2.1",
+        title: "2.1 Set Up Project",
+        activities: [
+          "Project Setup Form",
+          "Project Kickoff Preparation",
+          "Project Number Creation",
+          "Contact List Creation",
+          "BST Setup",
+          "Team Assignment",
+          "File Structure Setup",
+        ],
+      },
+      {
+        id: "2.2",
+        title: "2.2 Plan Project",
+        activities: [
+          "Scope Planning",
+          "Project Management Plan",
+          "WBS Development",
+          "Risk Planning",
+          "Schedule Development",
+          "Budget Planning",
+          "Resource Planning",
+        ],
+      },
+      {
+        id: "2.3",
+        title: "2.3 Execute Project",
+        activities: [
+          "Deliverable Management",
+          "Issue Resolution",
+          "Schedule Management",
+          "Progress Monitoring",
+          "Resource Management",
+          "Stakeholder Coordination",
+          "Subconsultant Management",
+        ],
+      },
+      {
+        id: "2.4",
+        title: "2.4 Manage Client",
+        activities: [
+          "Client Communication",
+          "Client Meetings",
+          "Expectation Management",
+          "Decision Tracking",
+          "Action Item Management",
+          "Escalation Management",
+          "Client Satisfaction",
+        ],
+      },
+      {
+        id: "2.5",
+        title: "2.5 Manage Quality",
+        activities: [
+          "QA Planning",
+          "QC Reviews",
+          "Independent Reviews",
+          "Deliverable Compliance",
+          "Standards Compliance",
+          "Comment Resolution",
+          "Quality Documentation",
+        ],
+      },
+      {
+        id: "2.6",
+        title: "2.6 Manage Changes",
+        activities: [
+          "Scope Changes",
+          "Schedule Changes",
+          "Budget Changes",
+          "Contract Amendments",
+          "Risk Evaluation",
+          "Approval Management",
+          "Change Documentation",
+        ],
+      },
+      {
+        id: "2.7",
+        title: "2.7 Close Project",
+        activities: [
+          "Contract Closeout",
+          "Client Feedback",
+          "Financial Closeout",
+          "Team Debrief",
+          "Final Deliverables",
+          "Lessons Learned",
+          "Archive Project Records",
+        ],
+      },
+    ],
+  },
+  {
+    id: "business",
+    title: "3.0 Business (Run the Business)",
+    color: BUSINESS,
+    workflows: [
+      {
+        id: "3.1",
+        title: "3.1 Manage Financials",
+        activities: [
+          "Budget Monitoring",
+          "ETC Management",
+          "Revenue Recognition",
+          "Invoicing",
+          "Accounts Receivable",
+          "Writeups / Writeoffs",
+          "Forecasting",
+          "Profitability Management",
+        ],
+      },
+      {
+        id: "3.2",
+        title: "3.2 Manage Risk",
+        activities: [
+          "Contract Risk",
+          "Scope Risk",
+          "Schedule Risk",
+          "Financial Risk",
+          "Technical Risk",
+          "Safety Risk",
+          "Risk Register Management",
+          "Risk Mitigation Planning",
+        ],
+      },
+      {
+        id: "3.3",
+        title: "3.3 Manage Client Relationships",
+        activities: [
+          "Strategic Account Planning",
+          "Client Retention",
+          "Executive Engagement",
+          "Client Satisfaction Reviews",
+          "Relationship Mapping",
+          "Repeat Work Strategy",
+          "Cross-Selling Opportunities",
+          "Client Development Planning",
+        ],
+      },
+      {
+        id: "3.4",
+        title: "3.4 Grow the Business",
+        activities: [
+          "Market Development",
+          "Business Development",
+          "Opportunity Pipeline",
+          "CRM Management",
+          "Networking",
+          "Brand Representation",
+          "Capture Planning",
+          "Growth Strategy",
+        ],
+      },
+    ],
+  },
+  {
+    id: "leadership",
+    title: "4.0 Leadership (Lead People)",
+    color: LEADERSHIP,
+    workflows: [
+      {
+        id: "4.1",
+        title: "4.1 Manage Team",
+        activities: [
+          "Recruiting & Hiring",
+          "Workforce Planning",
+          "Onboarding",
+          "Resource Planning",
+          "Performance Management",
+          "Employee Development",
+          "Recognition & Retention",
+          "Succession Planning",
+        ],
+      },
+      {
+        id: "4.2",
+        title: "4.2 Communication",
+        activities: [
+          "Team Communication",
+          "Client Communication",
+          "Meeting Management",
+          "Executive Communication",
+          "Difficult Conversations",
+          "Conflict Resolution",
+          "Presentation Skills",
+          "Documentation Standards",
+        ],
+      },
+      {
+        id: "4.3",
+        title: "4.3 Culture",
+        activities: [
+          "Accountability",
+          "Ownership",
+          "Collaboration",
+          "Professional Development",
+          "Business Builder Mindset",
+          "Ethics & Integrity",
+          "Knowledge Sharing",
+          "Continuous Improvement",
+        ],
+      },
+    ],
+  },
+];
+
+function slug(prefix: string, title: string) {
+  const base = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return `${prefix}-${base}`.slice(0, 64);
+}
+
+function node(
   id: string,
   title: string,
   description: string,
+  level: number,
   x: number,
   y: number,
   color: string,
   type: NodeKind = "task",
-  size = 1.25,
+  size = 1.15,
 ): GraphNode {
   return {
     id,
     title,
     description,
-    level: 1,
+    level,
     parentId: null,
     type,
     color,
@@ -36,120 +310,77 @@ function dot(
   };
 }
 
-function arrow(source: string, target: string, kind: GraphLink["kind"] = "parent"): GraphLink {
-  return { id: `${source}->${target}`, source, target, kind, arrows: "one" };
+function link(source: string, target: string): GraphLink {
+  return { id: `${source}->${target}`, source, target, kind: "parent", arrows: "one" };
 }
 
-const STAGES: { id: string; title: string; description: string }[] = [
-  { id: "long-lead", title: "Long lead", description: "Capture every opportunity and all related intelligence." },
-  { id: "positioning", title: "Positioning & Go/No-go", description: "Leverage experience and insight to decide where to play." },
-  { id: "proposal", title: "Proposal Development", description: "Build smarter proposals with the right content, people, and partners." },
-  { id: "shortlist", title: "Shortlist & Selection", description: "Strengthen client relationships and positioning through selection." },
-  { id: "negotiation", title: "Negotiation & Award", description: "Negotiate effectively and transition seamlessly to project setup." },
-  { id: "setup", title: "Project Setup", description: "Stand up the project accurately and efficiently the first time." },
-  { id: "staffing", title: "Staffing", description: "Find and engage the right people and partners for successful delivery." },
-  { id: "execution", title: "Execution", description: "Deliver quality work. Manage performance, risk, and changes in real time." },
-  { id: "invoice", title: "Invoice & Billing", description: "Bill accurately and promptly with full visibility into status." },
-  { id: "collect", title: "Collect", description: "Accelerate cash collection and manage AR proactively." },
-  { id: "closeout", title: "Closeout", description: "Close projects cleanly and capture final performance data." },
-  { id: "knowledge", title: "Institutional Knowledge", description: "Capture lessons, insights, and intelligence to fuel the next opportunity." },
-];
-
 export function createSampleDocument(): GraphDocument {
-  const loopCx = 3180;
-  const loopCy = 40;
-  const loopR = 250;
-  const lifecycle = STAGES.map((stage, i) => {
-    const angle = (i / STAGES.length) * Math.PI * 2 - Math.PI / 2;
-    return dot(
-      stage.id,
-      stage.title,
-      stage.description,
-      loopCx + Math.cos(angle) * loopR,
-      loopCy + Math.sin(angle) * loopR,
-      LIFECYCLE_ORANGE,
-      "task",
-      1.4,
+  const nodes: GraphNode[] = [];
+  const links: GraphLink[] = [];
+
+  const rootId = "prime-pm-root";
+  const xRoot = 0;
+  const xL1 = 300;
+  const xL2 = 620;
+  const xL3 = 940;
+  const row = 52;
+
+  let yCursor = 0;
+  const branchYs: number[] = [];
+
+  for (const branch of PRIME_PM_TREE) {
+    branchYs.push(yCursor);
+    let branchHeight = 0;
+    for (const wf of branch.workflows) {
+      branchHeight += Math.max(wf.activities.length, 1) * row;
+    }
+    branchHeight += (branch.workflows.length - 1) * row * 0.35;
+    yCursor += branchHeight + row * 2;
+  }
+
+  const rootY = (branchYs[0] + (yCursor - row * 2)) / 2;
+  nodes.push(
+    node(
+      rootId,
+      "PRIME PM",
+      "What activities make up each workflow?",
+      0,
+      xRoot,
+      rootY,
+      ROOT_COLOR,
+      "concept",
+      1.55,
+    ),
+  );
+
+  yCursor = 0;
+  for (const branch of PRIME_PM_TREE) {
+    const branchId = branch.id;
+    const branchCenterY = yCursor + countBranchHeight(branch, row) / 2;
+    nodes.push(
+      node(branchId, branch.title, branch.title, 1, xL1, branchCenterY, branch.color, "category", 1.35),
     );
-  });
+    links.push(link(rootId, branchId));
 
-  const y = 0;
-  const hire: GraphNode[] = [
-    dot("pm-req", "PM requisition", "Project manager requests a requisition to open a seat.", 0, y, HIRE, "task", 1.35),
-    dot("ta", "Talent acquisition", "TA posts the role and works the market.", 180, y, HIRE),
-    dot("source-referral", "Referral", "Someone known refers a candidate.", 360, y - 150, SOURCE, "info", 1.1),
-    dot("source-board", "Job board", "Public posting brings a candidate in.", 360, y, SOURCE, "info", 1.15),
-    dot("source-agency", "Agency", "A search partner submits a candidate.", 360, y + 150, SOURCE, "info", 1.1),
-    dot("source", "Source", "The true origin of this process — where the person actually enters.", 560, y, SOURCE, "category", 1.45),
-    dot("applicant", "Applicant", "A person is now in the hiring process.", 760, y, HIRE, "concept", 1.35),
-    dot("recruiter-screen", "Recruiter screen", "TA reviews fit, pay, and interest.", 960, y, HIRE),
-    dot("hm-review", "Hiring manager review", "The PM / hiring manager decides decline or move forward.", 1180, y, HIRE, "task", 1.35),
-    dot("decline", "Decline", "Hiring manager passes. Process ends for this applicant.", 1180, y + 170, EXIT, "info", 1.1),
-    dot("move-forward", "Move forward", "Hiring manager wants to meet them.", 1400, y, HIRE),
-    dot("phone-screen", "Phone screen", "Optional first live conversation.", 1600, y - 150, HIRE, "task", 1.15),
-    dot("first-interview", "First interview", "Hiring manager can start here instead of a phone call.", 1600, y + 150, HIRE, "task", 1.15),
-    dot("further-interview", "Further interview", "Next round — panel, technical, or leadership.", 1820, y, HIRE),
-    dot("offer", "Offer", "Compensation, start date, and written offer.", 2020, y, HIRE),
-    dot("onboard", "Hired / onboard", "They accept and join the firm.", 2220, y, WORK, "task", 1.35),
-    dot("work-under-pm", "Work under PM", "They deliver work under their project manager.", 2440, y, WORK, "category", 1.5),
-    dot("perf-review", "Annual performance review", "Yearly review of goals, delivery, and feedback.", 2440, y - 170, GROW),
-    dot("raise", "Annual raise / salary adjustment", "Comp moves with performance and market.", 2660, y - 170, GROW),
-    dot("promotion", "Promotion", "They move up in role or level.", 2660, y, GROW, "task", 1.3),
-    dot("become-pm", "Become project manager", "They take a PM seat and run the delivery loop.", 2880, y, WORK, "category", 1.45),
-    dot("retire", "Retire", "They leave the firm at the end of a career.", 2440, y + 170, EXIT, "info"),
-    dot("leave", "Leave", "They resign or otherwise exit.", 2660, y + 170, EXIT, "info"),
-    dot("pip", "Performance improvement plan", "HR puts them on a PIP after performance issues.", 2440, y + 320, RISK, "task"),
-    dot("misconduct", "Misconduct warning", "HR issues a warning before termination.", 2660, y + 320, RISK, "task"),
-    dot("fired", "Fired", "Employment ends for performance or misconduct.", 2880, y + 320, RISK, "info", 1.2),
-  ];
+    let wfY = yCursor;
+    for (const wf of branch.workflows) {
+      const wfId = wf.id;
+      const wfCenterY = wfY + (wf.activities.length * row) / 2 - row / 2;
+      nodes.push(node(wfId, wf.title, wf.title, 2, xL2, wfCenterY, branch.color, "task", 1.22));
+      links.push(link(branchId, wfId));
 
-  const nodes = [...hire, ...lifecycle];
+      wf.activities.forEach((activity, i) => {
+        const actId = slug(wfId, activity);
+        const y = wfY + i * row;
+        nodes.push(node(actId, activity, activity, 3, xL3, y, branch.color, "info", 1.05));
+        links.push(link(wfId, actId));
+      });
 
-  const links: GraphLink[] = [
-    arrow("pm-req", "ta"),
-    arrow("ta", "source-referral"),
-    arrow("ta", "source-board"),
-    arrow("ta", "source-agency"),
-    arrow("source-referral", "source"),
-    arrow("source-board", "source"),
-    arrow("source-agency", "source"),
-    arrow("source", "applicant"),
-    arrow("applicant", "recruiter-screen"),
-    arrow("recruiter-screen", "hm-review"),
-    arrow("hm-review", "decline"),
-    arrow("hm-review", "move-forward"),
-    arrow("move-forward", "phone-screen"),
-    arrow("move-forward", "first-interview"),
-    arrow("phone-screen", "further-interview"),
-    arrow("first-interview", "further-interview"),
-    arrow("further-interview", "offer"),
-    arrow("offer", "onboard"),
-    arrow("onboard", "work-under-pm"),
-    arrow("work-under-pm", "perf-review"),
-    arrow("work-under-pm", "raise"),
-    arrow("work-under-pm", "promotion"),
-    arrow("work-under-pm", "become-pm"),
-    arrow("work-under-pm", "retire"),
-    arrow("work-under-pm", "leave"),
-    arrow("work-under-pm", "pip"),
-    arrow("work-under-pm", "misconduct"),
-    arrow("perf-review", "work-under-pm", "cross"),
-    arrow("perf-review", "raise"),
-    arrow("perf-review", "pip"),
-    arrow("raise", "work-under-pm", "cross"),
-    arrow("promotion", "work-under-pm", "cross"),
-    arrow("promotion", "become-pm"),
-    arrow("become-pm", "pm-req", "cross"),
-    arrow("become-pm", "long-lead"),
-    arrow("pip", "work-under-pm", "cross"),
-    arrow("pip", "fired"),
-    arrow("misconduct", "work-under-pm", "cross"),
-    arrow("misconduct", "fired"),
-    ...STAGES.map((stage, i) => {
-      const next = STAGES[(i + 1) % STAGES.length];
-      return arrow(stage.id, next.id);
-    }),
-  ];
+      wfY += wf.activities.length * row + row * 0.35;
+    }
+
+    yCursor += countBranchHeight(branch, row) + row * 2;
+  }
 
   return {
     nodes,
@@ -159,8 +390,17 @@ export function createSampleDocument(): GraphDocument {
       physics: false,
       radial: false,
       colorBy: "custom",
-      enlarge: 1.1,
+      enlarge: 1.05,
       cardInfo: false,
     },
   };
+}
+
+function countBranchHeight(branch: WorkflowBranch, row: number) {
+  let h = 0;
+  for (const wf of branch.workflows) {
+    h += wf.activities.length * row;
+  }
+  h += (branch.workflows.length - 1) * row * 0.35;
+  return h;
 }

@@ -397,6 +397,84 @@ html[data-theme="dark"] .plus-menu {
 .ctx button.danger { color: #ef4444; }
 .ctx .sep { height: 1px; background: var(--line); margin: 4px 2px; }
 
+.ctx-picker-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 8px;
+}
+.ctx .ctx-picker-row button.swatch,
+.ctx .ctx-picker-row button.size-dot {
+  flex: 0 0 auto;
+  padding: 0;
+}
+.ctx .ctx-picker-row button.swatch {
+  display: block;
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  min-height: 18px;
+}
+.ctx .ctx-picker-row button.swatch:hover {
+  filter: brightness(1.08);
+}
+.ctx .ctx-picker-row button.size-dot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: transparent;
+}
+.ctx .ctx-picker-row button.size-dot:hover { background: var(--hover); }
+.size-dot-inner {
+  display: block;
+  border-radius: 50%;
+  background: var(--text);
+  pointer-events: none;
+}
+.ctx .ctx-picker-row button.size-dot.on .size-dot-inner {
+  box-shadow: 0 0 0 1px var(--card), 0 0 0 2px var(--text);
+}
+
+.ctx-flyout {
+  position: relative;
+}
+.ctx-flyout-trigger {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.ctx-flyout-caret {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+}
+.ctx-sub {
+  display: none;
+  position: absolute;
+  left: calc(100% + 4px);
+  top: 0;
+  min-width: 148px;
+  padding: 6px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  z-index: 1;
+}
+.ctx-flyout:hover .ctx-sub,
+.ctx-flyout:focus-within .ctx-sub {
+  display: block;
+}
+.ctx-sub button.is-active {
+  font-weight: 600;
+  background: var(--hover);
+}
+
 .edit-float {
   position: fixed;
   z-index: 30;

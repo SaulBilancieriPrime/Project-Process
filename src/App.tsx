@@ -5,6 +5,7 @@ import PlusMenuButton from "./components/PlusMenuButton";
 import GraphCanvas, { type GraphHandle } from "./components/GraphCanvas";
 import Header from "./components/Header";
 import InfoPanel from "./components/InfoPanel";
+import NodeContextMenu from "./components/NodeContextMenu";
 import Sidebar from "./components/Sidebar";
 import { LEVEL_COLORS, nodeColor } from "./graph/colors";
 import { addChild, addLink, blankNode, deleteNode, KIND_LABEL, setPinned } from "./graph/ops";
@@ -668,12 +669,16 @@ export default function App() {
         </div>
       )}
 
-      {menu?.kind === "node" && (
-        <div className="ctx" style={{ left: menu.x, top: menu.y }}>
-          <button type="button" onClick={() => { setEditingId(menu.id); setMenu(null); }}>Edit</button>
-          <button
-            type="button"
-            onClick={() => {
+      {menu?.kind === "node" && (() => {
+        const ctxNode = nodes.find((n) => n.id === menu.id);
+        if (!ctxNode) return null;
+        return (
+          <NodeContextMenu
+            node={ctxNode}
+            x={menu.x}
+            y={menu.y}
+            onEdit={() => { setEditingId(menu.id); setMenu(null); }}
+            onAddChild={() => {
               const parent = liveNode(menu.id);
               if (!parent) return;
               const next = addChild(nodes, links, parent);
@@ -683,59 +688,23 @@ export default function App() {
               setEditingId(next.id);
               setMenu(null);
             }}
-          >
-            Add child
-          </button>
-          <button type="button" onClick={() => startLink("none", menu.id)}>Link ·</button>
-          <button type="button" onClick={() => startLink("one", menu.id)}>Link →</button>
-          <button type="button" onClick={() => startLink("both", menu.id)}>Link ↔</button>
-          <button
-            type="button"
-            onClick={() => {
-              const node = nodes.find((n) => n.id === menu.id);
-              if (node) updateNode(menu.id, setPinned(node, !node.pinned));
+            onLink={(arrows) => startLink(arrows, menu.id)}
+            onTogglePin={() => {
+              updateNode(menu.id, setPinned(ctxNode, !ctxNode.pinned));
               setMenu(null);
             }}
-          >
-            {nodes.find((n) => n.id === menu.id)?.pinned ? "Unpin" : "Pin"}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              const node = nodes.find((n) => n.id === menu.id);
-              if (node) updateNode(menu.id, { collapsed: !node.collapsed });
+            onToggleCollapse={() => {
+              updateNode(menu.id, { collapsed: !ctxNode.collapsed });
               setMenu(null);
             }}
-          >
-            {nodes.find((n) => n.id === menu.id)?.collapsed ? "Expand branch" : "Collapse branch"}
-          </button>
-          <div className="sep" />
-          {(["concept", "category", "task", "info"] as NodeKind[]).map((kind) => (
-            <button key={kind} type="button" onClick={() => { updateNode(menu.id, { type: kind }); setMenu(null); }}>
-              Type: {KIND_LABEL[kind]}
-            </button>
-          ))}
-          <div className="sep" />
-          <div className="swatch-row" style={{ padding: "4px 6px 8px" }}>
-            {LEVEL_COLORS.map((c) => (
-              <button
-                key={c}
-                type="button"
-                className={`swatch${nodes.find((n) => n.id === menu.id)?.color === c ? " on" : ""}`}
-                style={{ background: c }}
-                onClick={() => { updateNode(menu.id, { color: c }); setMenu(null); }}
-              />
-            ))}
-          </div>
-          <button type="button" onClick={() => { updateNode(menu.id, { size: 0.7 }); setMenu(null); }}>Size S</button>
-          <button type="button" onClick={() => { updateNode(menu.id, { size: 1 }); setMenu(null); }}>Size M</button>
-          <button type="button" onClick={() => { updateNode(menu.id, { size: 1.45 }); setMenu(null); }}>Size L</button>
-          <button type="button" onClick={() => { updateNode(menu.id, { size: 2 }); setMenu(null); }}>Size XL</button>
-          <div className="sep" />
-          <button type="button" className="danger" onClick={() => removeNode(menu.id, false)}>Delete</button>
-          <button type="button" className="danger" onClick={() => removeNode(menu.id, true)}>Delete branch</button>
-        </div>
-      )}
+            onType={(kind) => updateNode(menu.id, { type: kind })}
+            onColor={(color) => updateNode(menu.id, { color })}
+            onSize={(size) => updateNode(menu.id, { size })}
+            onDelete={() => removeNode(menu.id, false)}
+            onDeleteBranch={() => removeNode(menu.id, true)}
+          />
+        );
+      })()}
 
       {menu?.kind === "link" && (
         <div className="ctx" style={{ left: menu.x, top: menu.y }}>
