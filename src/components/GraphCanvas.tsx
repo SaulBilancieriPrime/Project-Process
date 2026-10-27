@@ -170,6 +170,7 @@ export default function GraphCanvas({
   const hostRef = useRef<HTMLDivElement>(null);
   const spaceHeld = useRef(false);
   const skipBg = useRef(false);
+  const fgContextHandled = useRef(false);
   const interaction = useRef<
     | { type: "marquee"; x0: number; y0: number; x1: number; y1: number; additive: boolean; sx0: number; sy0: number }
     | { type: "group"; lastX: number; lastY: number }
@@ -281,20 +282,26 @@ export default function GraphCanvas({
     return best;
   }
 
-  function linkAt(clientX: number, clientY: number) {
+  function linkAtId(clientX: number, clientY: number) {
     const g = graphAtClient(clientX, clientY);
     const k = zoomK();
     const thresh = 9 / k;
     const live = liveEngineNodes();
     const byId = new Map(live.map((n) => [n.id, n]));
+    let bestId: string | null = null;
+    let bestD = Infinity;
     for (const l of graphData.links) {
       const e = linkEnds(l);
       const src = byId.get(e.source);
       const tgt = byId.get(e.target);
       if (!src || !tgt || src.x == null || src.y == null || tgt.x == null || tgt.y == null) continue;
-      if (distToSeg(g.x, g.y, src.x, src.y, tgt.x, tgt.y) <= thresh) return true;
+      const d = distToSeg(g.x, g.y, src.x, src.y, tgt.x, tgt.y);
+      if (d <= thresh && d < bestD) {
+        bestId = l.id;
+        bestD = d;
+      }
     }
-    return false;
+    return bestId;
   }
 
   function selectionHull(pad = 16) {
@@ -375,10 +382,22 @@ export default function GraphCanvas({
       className={`graph-host${placeArmed || connectArmed ? " is-draw" : ""}${gesture === "marquee" ? " is-select" : ""}${gesture === "group" ? " is-grab" : ""}${gesture === "pan" ? " is-pan" : ""}`}
       onContextMenu={(e) => {
         e.preventDefault();
+        const handledByFg = fgContextHandled.current;
+        fgContextHandled.current = false;
         const target = e.target as HTMLElement | null;
         if (target?.closest(".plus-wrap, .canvas-tools, .sidebar, .item-actions, .edit-float, .ctx, .omp-header")) return;
-        if (nodeAt(e.clientX, e.clientY)) return;
-        if (linkAt(e.clientX, e.clientY)) return;
+        if (handledByFg) return;
+
+        const node = nodeAt(e.clientX, e.clientY);
+        if (node) {
+          onNodeMenu(node.id, e.clientX, e.clientY);
+          return;
+        }
+        const linkId = linkAtId(e.clientX, e.clientY);
+        if (linkId) {
+          onLinkMenu(linkId, e.clientX, e.clientY);
+          return;
+        }
         onBackgroundMenu(e.clientX, e.clientY);
       }}
       onPointerDown={(e) => {
@@ -396,7 +415,7 @@ export default function GraphCanvas({
         const target = e.target as HTMLElement | null;
         if (target?.closest(".plus-wrap, .canvas-tools, .sidebar, .item-actions, .edit-float, .ctx, .omp-header")) return;
         if (nodeAt(e.clientX, e.clientY)) return;
-        if (linkAt(e.clientX, e.clientY)) return;
+        if (linkAtId(e.clientX, e.clientY)) return;
         const g = graphAtClient(e.clientX, e.clientY);
         const hull = selectedSet.size > 1 ? selectionHull() : null;
         if (hull && g.x >= hull.x && g.x <= hull.x + hull.w && g.y >= hull.y && g.y <= hull.y + hull.h) {
@@ -531,10 +550,12 @@ export default function GraphCanvas({
       }}
       onNodeRightClick={(n, ev) => {
         ev.preventDefault();
+        fgContextHandled.current = true;
         onNodeMenu(n.id, ev.clientX, ev.clientY);
       }}
       onLinkRightClick={(l, ev) => {
         ev.preventDefault();
+        fgContextHandled.current = true;
         onLinkMenu(l.id, ev.clientX, ev.clientY);
       }}
       onLinkClick={(l) => {
@@ -551,6 +572,7 @@ export default function GraphCanvas({
       }}
       linkHoverPrecision={10}
       onBackgroundClick={(ev) => {
+        if (ev.button !== 0) return;
         if (placeArmed) return;
         if (skipBg.current) {
           skipBg.current = false;

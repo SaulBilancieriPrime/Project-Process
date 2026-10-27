@@ -129,6 +129,12 @@ export default function App() {
     window.setTimeout(() => setToast(null), 2400);
   }, []);
 
+  function openContextMenu(next: MenuState) {
+    setMenu(next);
+    setPicked(null);
+    setPlusOpen(false);
+  }
+
   function liveGraphNodes() {
     const fg = graphRef.current as (GraphHandle & { graphData?: unknown }) | undefined;
     const raw = fg?.graphData;
@@ -291,6 +297,7 @@ export default function App() {
     setPicked({ kind: "node", id });
     setEditingLinkId(null);
     setMenu(null);
+    setPlusOpen(false);
     setInfoOpen(false);
   }
 
@@ -299,6 +306,7 @@ export default function App() {
     setPicked({ kind: "link", id });
     setEditingId(null);
     setMenu(null);
+    setPlusOpen(false);
     setInfoOpen(false);
   }
 
@@ -503,13 +511,10 @@ export default function App() {
             }}
             onNodeMenu={(id, x, y) => {
               setSelectedIds((prev) => (prev.includes(id) ? prev : [id]));
-              setMenu({ kind: "node", id, x, y });
+              openContextMenu({ kind: "node", id, x, y });
             }}
-            onLinkMenu={(id, x, y) => setMenu({ kind: "link", id, x, y })}
-            onBackgroundMenu={(x, y) => {
-              setPlusOpen(false);
-              setMenu({ kind: "canvas", x, y });
-            }}
+            onLinkMenu={(id, x, y) => openContextMenu({ kind: "link", id, x, y })}
+            onBackgroundMenu={(x, y) => openContextMenu({ kind: "canvas", x, y })}
             onBackground={(_x, _y, graph, dbl) => {
               if (placing) {
                 addLooseNode(graph);
@@ -598,7 +603,10 @@ export default function App() {
           open={plusOpen}
           armed={placing || Boolean(connect)}
           onOpen={(open) => {
-            if (open) setMenu(null);
+            if (open) {
+              setMenu(null);
+              setPicked(null);
+            }
             setPlusOpen(open);
           }}
           onAddNode={startPlace}
@@ -651,7 +659,7 @@ export default function App() {
         />
       </div>
 
-      {selectedIds.length > 1 && !editing && !editingLink && !connect && !placing && (
+      {selectedIds.length > 1 && !menu && !editing && !editingLink && !connect && !placing && (
         <div className="item-actions" style={actionPos}>
           <button type="button" disabled>
             {selectedIds.length} selected
@@ -662,25 +670,12 @@ export default function App() {
         </div>
       )}
 
-      {picked && selectedIds.length <= 1 && !editing && !editingLink && !connect && !placing && (
+      {picked?.kind === "link" && !menu && !plusOpen && !editing && !editingLink && !connect && !placing && (
         <div className="item-actions" style={actionPos}>
-          <button
-            type="button"
-            onClick={() => {
-              if (picked.kind === "node") setEditingId(picked.id);
-              else setEditingLinkId(picked.id);
-            }}
-          >
+          <button type="button" onClick={() => setEditingLinkId(picked.id)}>
             Edit
           </button>
-          <button
-            type="button"
-            className="danger"
-            onClick={() => {
-              if (picked.kind === "node") removeNode(picked.id, false);
-              else removeLink(picked.id);
-            }}
-          >
+          <button type="button" className="danger" onClick={() => removeLink(picked.id)}>
             Delete
           </button>
         </div>
@@ -694,7 +689,6 @@ export default function App() {
             node={ctxNode}
             x={menu.x}
             y={menu.y}
-            onEdit={() => { setEditingId(menu.id); setMenu(null); }}
             onAddChild={() => {
               const parent = liveNode(menu.id);
               if (!parent) return;
@@ -793,6 +787,13 @@ export default function App() {
             ))}
           </div>
           <div className="edit-actions">
+            <button
+              type="button"
+              className="danger ghost"
+              onClick={() => removeNode(editing.id, false)}
+            >
+              Delete
+            </button>
             <button type="button" className="ghost" onClick={() => setEditingId(null)}>Done</button>
           </div>
         </div>

@@ -1,7 +1,8 @@
 import { LEVEL_COLORS } from "../graph/colors";
 import { KIND_LABEL } from "../graph/ops";
-import type { GraphNode, NodeKind } from "../types";
+import type { ArrowStyle, GraphNode, NodeKind } from "../types";
 import { NODE_KINDS } from "../types";
+import LinkMenuOptions from "./LinkMenuOptions";
 
 const SIZE_PRESETS = [
   { value: 0.7, label: "S", dot: 8 },
@@ -14,9 +15,8 @@ type Props = {
   node: GraphNode;
   x: number;
   y: number;
-  onEdit: () => void;
   onAddChild: () => void;
-  onLink: (arrows: "none" | "one" | "both") => void;
+  onLink: (arrows: ArrowStyle) => void;
   onTogglePin: () => void;
   onToggleCollapse: () => void;
   onType: (kind: NodeKind) => void;
@@ -30,7 +30,6 @@ export default function NodeContextMenu({
   node,
   x,
   y,
-  onEdit,
   onAddChild,
   onLink,
   onTogglePin,
@@ -46,21 +45,20 @@ export default function NodeContextMenu({
 
   return (
     <div className="ctx" style={{ left: x, top: y }}>
-      <button type="button" onClick={onEdit}>
-        Edit
-      </button>
       <button type="button" onClick={onAddChild}>
         Add child
       </button>
-      <button type="button" onClick={() => onLink("none")}>
-        Link ·
-      </button>
-      <button type="button" onClick={() => onLink("one")}>
-        Link →
-      </button>
-      <button type="button" onClick={() => onLink("both")}>
-        Link ↔
-      </button>
+      <div className="ctx-flyout">
+        <button type="button" className="ctx-flyout-trigger">
+          Link
+          <span className="ctx-flyout-caret" aria-hidden>
+            ›
+          </span>
+        </button>
+        <div className="ctx-sub ctx-sub-link">
+          <LinkMenuOptions onLink={onLink} />
+        </div>
+      </div>
       <button type="button" onClick={onTogglePin}>
         {node.pinned ? "Unpin" : "Pin"}
       </button>

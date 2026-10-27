@@ -515,6 +515,19 @@ html[data-theme="dark"] .plus-menu {
   font-weight: 600;
   background: var(--hover);
 }
+.ctx-sub-link {
+  min-width: 176px;
+}
+.ctx-sub-link .plus-label {
+  margin: 2px 6px 4px;
+}
+.ctx-sub-link button.plus-connect {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+}
 
 .edit-float {
   position: fixed;
@@ -528,7 +541,14 @@ html[data-theme="dark"] .plus-menu {
 }
 .edit-float h3 { margin: 0 0 8px; font-size: 13px; }
 .edit-float label { display: block; margin: 8px 0 4px; font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: 0.03em; text-transform: uppercase; }
-.edit-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 10px; }
+.edit-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+.edit-actions .danger.ghost { color: #ef4444; }
 .swatch {
   width: 18px;
   height: 18px;
