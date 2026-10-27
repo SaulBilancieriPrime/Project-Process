@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type MutableRefObject } from "react";
+import { chip, chipOn, cx, dangerText, editFloat, fieldLabel, ghostBtn, primaryBtn } from "../styles";
 import type { ArrowStyle, GraphLink, LinkKind } from "../types";
 
 type Draft = { arrows: ArrowStyle; kind: LinkKind };
@@ -54,10 +55,10 @@ export default function EditLinkPanel({
   }, [draft, onSave, saveRef]);
 
   return (
-    <div className="edit-float" style={style}>
-      <h3>Edit connection Modal</h3>
-      <label>Arrows</label>
-      <div className="chip-row">
+    <div className={editFloat} style={style}>
+      <h3 className="mt-0 mb-2 text-[13px]">Edit connection Modal</h3>
+      <label className={fieldLabel}>Arrows</label>
+      <div className="flex flex-wrap gap-1.5">
         {([
           ["none", "None"],
           ["one", "One"],
@@ -66,40 +67,40 @@ export default function EditLinkPanel({
           <button
             key={value}
             type="button"
-            className={`chip${draft.arrows === value ? " on" : ""}`}
+            className={cx(chip, draft.arrows === value && chipOn)}
             onClick={() => setDraft((prev) => ({ ...prev, arrows: value }))}
           >
             {label}
           </button>
         ))}
       </div>
-      <label>Type</label>
-      <div className="chip-row">
+      <label className={fieldLabel}>Type</label>
+      <div className="flex flex-wrap gap-1.5">
         <button
           type="button"
-          className={`chip${draft.kind === "parent" ? " on" : ""}`}
+          className={cx(chip, draft.kind === "parent" && chipOn)}
           onClick={() => setDraft((prev) => ({ ...prev, kind: "parent" }))}
         >
           Hierarchy
         </button>
         <button
           type="button"
-          className={`chip${draft.kind === "cross" ? " on" : ""}`}
+          className={cx(chip, draft.kind === "cross" && chipOn)}
           onClick={() => setDraft((prev) => ({ ...prev, kind: "cross" }))}
         >
           Cross
         </button>
       </div>
-      <div className="edit-actions">
+      <div className="mt-2.5 flex items-center justify-between gap-1.5">
         {dirty ? (
-          <button type="button" className="ghost" onClick={onClose}>Cancel</button>
+          <button type="button" className={ghostBtn} onClick={onClose}>Cancel</button>
         ) : (
-          <button type="button" className="danger ghost" onClick={onDelete}>Delete</button>
+          <button type="button" className={cx(ghostBtn, dangerText)} onClick={onDelete}>Delete</button>
         )}
         {dirty ? (
-          <button type="button" className="primary-btn" onClick={() => onSave(draft)}>Save</button>
+          <button type="button" className={primaryBtn} onClick={() => onSave(draft)}>Save</button>
         ) : (
-          <button type="button" className="ghost" onClick={onClose}>Close</button>
+          <button type="button" className={ghostBtn} onClick={onClose}>Close</button>
         )}
       </div>
     </div>

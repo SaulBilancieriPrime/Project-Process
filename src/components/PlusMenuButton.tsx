@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { ArrowStyle } from "../types";
+import { cx, plusMenuBox, toolBtn, toolOn } from "../styles";
 import PlusMenu from "./PlusMenu";
 
 type Props = {
@@ -26,10 +27,14 @@ export default function PlusMenuButton({ open, armed, onOpen, onAddNode, onLink 
   }, [open, onOpen]);
 
   return (
-    <div className="plus-wrap" ref={wrapRef}>
+    <div className="plus-wrap absolute top-3 left-3 z-[9]" ref={wrapRef}>
       <button
         type="button"
-        className={`plus-btn${open || armed ? " is-on" : ""}`}
+        className={cx(
+          toolBtn,
+          "h-9 w-9 rounded-[10px] p-0 text-[22px] leading-none font-medium",
+          (open || armed) && toolOn,
+        )}
         aria-label="Add"
         aria-expanded={open}
         onMouseDown={(e) => e.stopPropagation()}
@@ -41,7 +46,7 @@ export default function PlusMenuButton({ open, armed, onOpen, onAddNode, onLink 
         +
       </button>
       {open && (
-        <div className="plus-menu">
+        <div className={cx("plus-menu absolute top-[calc(100%+6px)] left-0", plusMenuBox)}>
           <PlusMenu
             onAddNode={onAddNode}
             onLink={onLink}

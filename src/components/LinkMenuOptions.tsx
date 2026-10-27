@@ -27,12 +27,12 @@ type Props = {
 export default function LinkMenuOptions({ onLink }: Props) {
   return (
     <>
-      <div className="plus-label">Link</div>
+      <div className="mx-1.5 mt-2 mb-1 text-[10px] font-bold tracking-wider text-[var(--muted)] uppercase">Link</div>
       {LINK_OPTIONS.map(([arrows, label]) => (
         <button
           key={arrows}
           type="button"
-          className="plus-connect"
+          className="flex w-full cursor-pointer items-center gap-2 rounded-lg border-0 bg-transparent px-2 py-[7px] text-left font-sans text-xs text-[var(--text)] hover:bg-[var(--hover)]"
           onClick={() => onLink(arrows)}
         >
           <ArrowIcon kind={arrows} />

@@ -1,7 +1,20 @@
-import { useEffect, useRef, useState, type CSSProperties, type MutableRefObject } from "react";
-import { LEVEL_COLORS, nodeColor } from "../graph/colors";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MutableRefObject,
+} from "react";
+import { LEVEL_COLORS, nodeColor, SIZE_PRESETS } from "../graph/colors";
 import { KIND_LABEL } from "../graph/ops";
+import { cx, dangerText, editFloat, field, fieldArea, fieldLabel, ghostBtn, primaryBtn, swatch, swatchOn } from "../styles";
 import type { ColorBy, GraphNode, NodeKind } from "../types";
+
+function nearestSizeLabel(size: number) {
+  return SIZE_PRESETS.reduce((best, preset) =>
+    Math.abs(preset.value - size) < Math.abs(best.value - size) ? preset : best,
+  ).label;
+}
 
 type Draft = {
   title: string;
@@ -9,6 +22,7 @@ type Draft = {
   type: NodeKind;
   size: number;
   color?: string;
+  employee: string;
 };
 
 function toDraft(node: GraphNode): Draft {
@@ -18,6 +32,7 @@ function toDraft(node: GraphNode): Draft {
     type: node.type,
     size: node.size,
     color: node.color,
+    employee: node.employee ?? "",
   };
 }
 
@@ -27,7 +42,8 @@ function isDirty(node: GraphNode, draft: Draft) {
     draft.description !== node.description ||
     draft.type !== node.type ||
     Math.abs(draft.size - node.size) > 0.001 ||
-    (draft.color ?? "") !== (node.color ?? "")
+    (draft.color ?? "") !== (node.color ?? "") ||
+    draft.employee !== (node.employee ?? "")
   );
 }
 
@@ -83,50 +99,101 @@ export default function EditNodePanel({
 
   return (
     <div
-      className="edit-float is-tinted"
+      className={`${editFloat} is-tinted`}
       style={{ ...style, ["--edit-accent" as string]: accent }}
     >
-      <h3>Edit node Modal</h3>
-      <label>Title</label>
-      <input autoFocus value={draft.title} onChange={(e) => patch({ title: e.target.value })} />
-      <label>Description</label>
-      <textarea value={draft.description} onChange={(e) => patch({ description: e.target.value })} />
-      <label>Type</label>
-      <select value={draft.type} onChange={(e) => patch({ type: e.target.value as NodeKind })}>
-        {(["concept", "category", "task", "info"] as NodeKind[]).map((kind) => (
-          <option key={kind} value={kind}>{KIND_LABEL[kind]}</option>
-        ))}
-      </select>
-      <label>Size</label>
-      <input
-        type="range"
-        min={0.55}
-        max={2.4}
-        step={0.05}
-        value={draft.size}
-        onChange={(e) => patch({ size: Number(e.target.value) })}
-      />
-      <div className="swatch-row" style={{ marginTop: 10 }}>
+      <h3 className="mt-0 mb-2 text-[13px]">Edit Node: {node.title}</h3>
+
+      <label className={fieldLabel}>Status</label>
+      <div className="mt-2.5 flex flex-wrap gap-1.5">
         {LEVEL_COLORS.map((c) => (
           <button
             key={c}
             type="button"
-            className={`swatch${draft.color === c || (!draft.color && nodeColor({ ...node, ...draft }, colorBy) === c) ? " on" : ""}`}
+            className={cx(swatch, (draft.color === c || (!draft.color && nodeColor({ ...node, ...draft }, colorBy) === c)) && swatchOn)}
             style={{ background: c }}
             onClick={() => patch({ color: c })}
           />
         ))}
       </div>
-      <div className="edit-actions">
+      <label className={fieldLabel}>Title</label>
+      <input
+        className={field}
+        autoFocus
+        value={draft.title}
+        onChange={(e) => patch({ title: e.target.value })}
+      />
+      <label className={fieldLabel}>Description</label>
+      <textarea
+        className={fieldArea}
+        value={draft.description}
+        onChange={(e) => patch({ description: e.target.value })}
+      />
+      <label className={fieldLabel}>Assigned employee</label>
+      <input
+        className={field}
+        value={draft.employee}
+        placeholder="Name"
+        onChange={(e) => patch({ employee: e.target.value })}
+      />
+      <label className={fieldLabel}>Type</label>
+      <select
+        className={field}
+        value={draft.type}
+        onChange={(e) => patch({ type: e.target.value as NodeKind })}
+      >
+        {(["concept", "category", "task", "info"] as NodeKind[]).map((kind) => (
+          <option key={kind} value={kind}>
+            {KIND_LABEL[kind]}
+          </option>
+        ))}
+      </select>
+      <label className={fieldLabel}>Size</label>
+      <div className="flex min-h-12 items-end justify-between gap-0.5">
+        {SIZE_PRESETS.map(({ value, label, dot }) => (
+          <button
+            key={label}
+            type="button"
+            className={cx(
+              "edit-size-btn flex min-w-0 flex-1 cursor-pointer flex-col items-center justify-end gap-1.5 border-0 bg-transparent pt-1",
+              nearestSizeLabel(draft.size) === label && "on",
+            )}
+            title={`Size ${label}`}
+            aria-label={`Size ${label}`}
+            aria-pressed={nearestSizeLabel(draft.size) === label}
+            onClick={() => patch({ size: value })}
+          >
+            <span
+              className="edit-size-node pointer-events-none block rounded-full bg-[var(--edit-accent,var(--accent))]"
+              style={{ width: dot, height: dot }}
+            />
+            <span className={cx("text-[9px] leading-none font-bold tracking-wide text-[var(--muted)]", nearestSizeLabel(draft.size) === label && "text-[var(--text)]")}>{label}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-2.5 flex items-center justify-between gap-1.5 pt-3">
         {dirty ? (
-          <button type="button" className="ghost" onClick={onClose}>Cancel</button>
+          <button type="button" className={ghostBtn} onClick={onClose}>
+            Cancel
+          </button>
         ) : (
-          <button type="button" className="danger ghost" onClick={onDelete}>Delete</button>
+          <button type="button" className={cx(ghostBtn, dangerText)} onClick={onDelete}>
+            Delete
+          </button>
         )}
         {dirty ? (
-          <button type="button" className="primary-btn" onClick={() => onSave(draft)}>Save</button>
+          <button
+            type="button"
+            className={primaryBtn}
+            onClick={() => onSave(draft)}
+          >
+            Save
+          </button>
         ) : (
-          <button type="button" className="ghost" onClick={onClose}>Close</button>
+          <button type="button" className={ghostBtn} onClick={onClose}>
+            Close
+          </button>
         )}
       </div>
     </div>

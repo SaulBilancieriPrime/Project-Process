@@ -1,6 +1,16 @@
 import type { ColorBy, GraphNode, NodeKind } from "../types";
 
-export const LEVEL_COLORS = ["#e67e22", "#5b9bd5", "#8b5cf6", "#34d399", "#f59e0b", "#f43f5e", "#38bdf8", "#64748b"];
+export const LEVEL_COLORS = ["#f43f5e", "#f59e0b", "#34d399"];
+
+export const SIZE_PRESETS = [
+  { value: 0.5, label: "xs", dot: 8 },
+  { value: 1.5, label: "s", dot: 11 },
+  { value: 2.5, label: "m", dot: 14 },
+  { value: 3.5, label: "l", dot: 18 },
+  { value: 4.5, label: "xl", dot: 22 },
+  { value: 5.5, label: "2xl", dot: 26 },
+  { value: 6.5, label: "3xl", dot: 32 },
+] as const;
 
 export const TYPE_COLORS: Record<NodeKind, string> = {
   concept: "#7dd3fc",
@@ -16,19 +26,33 @@ export function sizeForLevel(level: number) {
 export function normalizeHex(hex: string) {
   const raw = hex.trim().toLowerCase().replace("#", "");
   if (!raw) return "#000000";
-  const full = raw.length === 3 ? raw.split("").map((c) => c + c).join("") : raw;
+  const full =
+    raw.length === 3
+      ? raw
+          .split("")
+          .map((c) => c + c)
+          .join("")
+      : raw;
   return `#${full}`;
 }
 
 export function nodeColor(node: GraphNode, colorBy: ColorBy) {
   if (colorBy === "custom" && node.color) return node.color;
   if (colorBy === "type") return node.color || TYPE_COLORS[node.type];
-  return node.color || LEVEL_COLORS[Math.min(node.level, LEVEL_COLORS.length - 1)];
+  return (
+    node.color || LEVEL_COLORS[Math.min(node.level, LEVEL_COLORS.length - 1)]
+  );
 }
 
 export function hexToRgb(hex: string) {
   const raw = hex.replace("#", "");
-  const full = raw.length === 3 ? raw.split("").map((c) => c + c).join("") : raw;
+  const full =
+    raw.length === 3
+      ? raw
+          .split("")
+          .map((c) => c + c)
+          .join("")
+      : raw;
   const n = Number.parseInt(full, 16);
   return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
 }

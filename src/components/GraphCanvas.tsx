@@ -17,6 +17,7 @@ type Props = {
   connectFrom: string | null;
   connectArmed: boolean;
   placeArmed: boolean;
+  placeFrom: string | null;
   linkArrows: ArrowStyle;
   search: string;
   levels: number[];
@@ -138,6 +139,7 @@ export default function GraphCanvas({
   connectFrom,
   connectArmed,
   placeArmed,
+  placeFrom,
   linkArrows,
   search,
   levels,
@@ -428,7 +430,7 @@ export default function GraphCanvas({
   return (
     <div
       ref={hostRef}
-      className={`graph-host${placeArmed || connectArmed ? " is-draw" : ""}${gesture === "marquee" ? " is-select" : ""}${gesture === "group" ? " is-grab" : ""}${gesture === "pan" ? " is-pan" : ""}`}
+      className={`graph-host absolute inset-0${placeArmed || connectArmed ? " is-draw" : ""}${gesture === "marquee" ? " is-select" : ""}${gesture === "group" ? " is-grab" : ""}${gesture === "pan" ? " is-pan" : ""}`}
       onContextMenu={(e) => {
         e.preventDefault();
         const handledByFg = fgContextHandled.current;
@@ -454,6 +456,7 @@ export default function GraphCanvas({
         handleGraphClick(e.clientX, e.clientY, e.shiftKey, true);
       }}
       onPointerDown={(e) => {
+        skipBg.current = false;
         if (placeArmed || connectArmed) return;
         if (e.button === 1) {
           e.preventDefault();
@@ -467,7 +470,12 @@ export default function GraphCanvas({
         if (spaceHeld.current || e.altKey) return;
         const target = e.target as HTMLElement | null;
         if (target?.closest(".plus-wrap, .canvas-tools, .sidebar, .item-actions, .edit-float, .ctx, .omp-header")) return;
-        if (nodeAt(e.clientX, e.clientY)) return;
+        const hit = nodeAt(e.clientX, e.clientY);
+        if (hit) {
+          skipBg.current = true;
+          onSelect(hit.id, e.shiftKey);
+          return;
+        }
         if (linkAtId(e.clientX, e.clientY)) return;
         const g = graphAtClient(e.clientX, e.clientY);
         const hull = selectedSet.size > 1 ? selectionHull() : null;
@@ -478,6 +486,7 @@ export default function GraphCanvas({
           (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
           return;
         }
+        skipBg.current = false;
         interaction.current = {
           type: "marquee",
           x0: g.x,
@@ -519,7 +528,6 @@ export default function GraphCanvas({
         if (it.type === "marquee") {
           const k = zoomK();
           if (Math.abs(it.x1 - it.x0) * k < 6 && Math.abs(it.y1 - it.y0) * k < 6) {
-            if (skipBg.current) return;
             skipBg.current = true;
             if (handleGraphClick(e.clientX, e.clientY, it.additive)) return;
             const g = graphAtClient(e.clientX, e.clientY);
@@ -859,7 +867,18 @@ export default function GraphCanvas({
         if (!cur) return;
         if (placeArmed) {
           const r = 5.2 / Math.max(globalScale, 0.35);
+          const src = placeFrom ? graphData.nodes.find((n) => n.id === placeFrom) : null;
           ctx.save();
+          if (src && src.x != null && src.y != null) {
+            ctx.strokeStyle = palette.linkHot;
+            ctx.lineWidth = 1.35 / globalScale;
+            ctx.setLineDash([5 / globalScale, 4 / globalScale]);
+            ctx.beginPath();
+            ctx.moveTo(src.x, src.y);
+            ctx.lineTo(cur.x, cur.y);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
           ctx.globalAlpha = 0.55;
           ctx.beginPath();
           ctx.arc(cur.x, cur.y, r + 3 / globalScale, 0, Math.PI * 2);
@@ -877,7 +896,7 @@ export default function GraphCanvas({
           ctx.font = `600 ${11 / globalScale}px "Segoe UI", sans-serif`;
           ctx.textAlign = "center";
           ctx.textBaseline = "top";
-          ctx.fillText("New idea", cur.x, cur.y + r + 4 / globalScale);
+          ctx.fillText(placeFrom ? "New child" : "New idea", cur.x, cur.y + r + 4 / globalScale);
           ctx.restore();
           return;
         }

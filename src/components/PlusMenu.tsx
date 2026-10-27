@@ -1,4 +1,5 @@
 import type { ArrowStyle } from "../types";
+import { menuItem } from "../styles";
 import LinkMenuOptions from "./LinkMenuOptions";
 
 type Props = {
@@ -12,6 +13,7 @@ export default function PlusMenu({ onAddNode, onLink, onClose }: Props) {
     <>
       <button
         type="button"
+        className={menuItem}
         onClick={() => {
           onAddNode();
           onClose();

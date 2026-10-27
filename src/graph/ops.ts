@@ -13,6 +13,7 @@ export function blankNode(partial: Partial<GraphNode> & { title?: string }): Gra
     parentId: partial.parentId ?? null,
     type: partial.type ?? "concept",
     color: partial.color,
+    employee: partial.employee ?? "",
     size: partial.size ?? sizeForLevel(level),
     pinned: Boolean(partial.pinned),
     collapsed: false,
@@ -23,7 +24,12 @@ export function blankNode(partial: Partial<GraphNode> & { title?: string }): Gra
   };
 }
 
-export function addChild(nodes: GraphNode[], links: GraphLink[], parent: GraphNode): { nodes: GraphNode[]; links: GraphLink[]; id: string } {
+export function addChild(
+  nodes: GraphNode[],
+  links: GraphLink[],
+  parent: GraphNode,
+  at?: { x: number; y: number },
+): { nodes: GraphNode[]; links: GraphLink[]; id: string } {
   const siblings = nodes.filter((n) => n.parentId === parent.id);
   const angle = (siblings.length * 0.85) - 0.4;
   const dist = 48 + parent.size * 18;
@@ -32,11 +38,14 @@ export function addChild(nodes: GraphNode[], links: GraphLink[], parent: GraphNo
     level: parent.level + 1,
     parentId: parent.id,
     type: parent.type === "category" ? "concept" : parent.type,
-    x: (parent.x ?? 0) + Math.cos(angle) * dist,
-    y: (parent.y ?? 0) + Math.sin(angle) * dist,
+    x: at?.x ?? (parent.x ?? 0) + Math.cos(angle) * dist,
+    y: at?.y ?? (parent.y ?? 0) + Math.sin(angle) * dist,
+    pinned: Boolean(at),
   });
   return {
-    nodes: [...nodes, child],
+    nodes: parent.collapsed
+      ? [...nodes.map((n) => (n.id === parent.id ? { ...n, collapsed: false } : n)), child]
+      : [...nodes, child],
     links: [...links, { id: newId(), source: parent.id, target: child.id, kind: "parent", arrows: "none" }],
     id: child.id,
   };

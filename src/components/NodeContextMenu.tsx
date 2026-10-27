@@ -1,15 +1,6 @@
-import { LEVEL_COLORS } from "../graph/colors";
-import { KIND_LABEL } from "../graph/ops";
-import type { ArrowStyle, GraphNode, NodeKind } from "../types";
-import { NODE_KINDS } from "../types";
+import type { ArrowStyle, GraphNode } from "../types";
+import { ctxBox, cx, dangerText, menuItem } from "../styles";
 import LinkMenuOptions from "./LinkMenuOptions";
-
-const SIZE_PRESETS = [
-  { value: 0.7, label: "S", dot: 8 },
-  { value: 1, label: "M", dot: 11 },
-  { value: 1.45, label: "L", dot: 14 },
-  { value: 2, label: "XL", dot: 18 },
-] as const;
 
 type Props = {
   node: GraphNode;
@@ -19,9 +10,6 @@ type Props = {
   onLink: (arrows: ArrowStyle) => void;
   onTogglePin: () => void;
   onToggleCollapse: () => void;
-  onType: (kind: NodeKind) => void;
-  onColor: (color: string) => void;
-  onSize: (size: number) => void;
   onDelete: () => void;
   onDeleteBranch: () => void;
 };
@@ -34,95 +22,36 @@ export default function NodeContextMenu({
   onLink,
   onTogglePin,
   onToggleCollapse,
-  onType,
-  onColor,
-  onSize,
   onDelete,
   onDeleteBranch,
 }: Props) {
-  const activeColor = node.color;
-  const activeSize = node.size;
-
   return (
-    <div className="ctx" style={{ left: x, top: y }}>
-      <button type="button" onClick={onAddChild}>
+    <div className={cx("ctx", ctxBox)} style={{ left: x, top: y }}>
+      <button type="button" className={menuItem} onClick={onAddChild}>
         Add child
       </button>
-      <div className="ctx-flyout">
-        <button type="button" className="ctx-flyout-trigger">
+      <div className="ctx-flyout relative">
+        <button type="button" className={cx(menuItem, "ctx-flyout-trigger justify-between gap-3")}>
           Link
-          <span className="ctx-flyout-caret" aria-hidden>
+          <span className="ctx-flyout-caret text-sm leading-none text-[var(--muted)]" aria-hidden>
             ›
           </span>
         </button>
-        <div className="ctx-sub ctx-sub-link">
+        <div className="ctx-sub ctx-sub-link absolute top-0 left-[calc(100%+4px)] z-[1] hidden min-w-44 rounded-[10px] border border-[var(--line)] bg-[var(--card)] p-1.5 shadow-[var(--shadow)]">
           <LinkMenuOptions onLink={onLink} />
         </div>
       </div>
-      <button type="button" onClick={onTogglePin}>
+      <button type="button" className={menuItem} onClick={onTogglePin}>
         {node.pinned ? "Unpin" : "Pin"}
       </button>
-      <button type="button" onClick={onToggleCollapse}>
+      <button type="button" className={menuItem} onClick={onToggleCollapse}>
         {node.collapsed ? "Expand branch" : "Collapse branch"}
       </button>
-      <div className="sep" />
-      <div className="ctx-flyout">
-        <button type="button" className="ctx-flyout-trigger">
-          Type: {KIND_LABEL[node.type]}
-          <span className="ctx-flyout-caret" aria-hidden>
-            ›
-          </span>
-        </button>
-        <div className="ctx-sub">
-          {NODE_KINDS.map((kind) => (
-            <button
-              key={kind}
-              type="button"
-              className={node.type === kind ? "is-active" : ""}
-              onClick={() => onType(kind)}
-            >
-              {KIND_LABEL[kind]}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="sep" />
-      <div className="swatch-row ctx-picker-row">
-        {LEVEL_COLORS.map((c) => (
-          <button
-            key={c}
-            type="button"
-            className={`swatch${activeColor === c ? " on" : ""}`}
-            style={{ background: c }}
-            title="Color"
-            aria-label="Set color"
-            onClick={() => onColor(c)}
-          />
-        ))}
-      </div>
-      <div className="sep" />
-      <div className="size-row ctx-picker-row">
-        {SIZE_PRESETS.map(({ value, label, dot }) => (
-          <button
-            key={label}
-            type="button"
-            className={`size-dot${Math.abs(activeSize - value) < 0.06 ? " on" : ""}`}
-            title={`Size ${label}`}
-            aria-label={`Size ${label}`}
-            onClick={() => onSize(value)}
-          >
-            <span
-              className="size-dot-inner"
-              style={{ width: dot, height: dot }}
-            />
-          </button>
-        ))}
-      </div>
-      <div className="sep" />
-      <button type="button" className="danger" onClick={onDelete}>
+      <div className="sep mx-0.5 my-1 h-px bg-[var(--line)]" />
+      <button type="button" className={cx(menuItem, dangerText)} onClick={onDelete}>
         Delete
       </button>
-      <button type="button" className="danger" onClick={onDeleteBranch}>
+      <button type="button" className={cx(menuItem, dangerText)} onClick={onDeleteBranch}>
         Delete branch
       </button>
     </div>

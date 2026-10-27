@@ -33,6 +33,7 @@ export function normalizeNode(raw: Partial<GraphNode>, index = 0): GraphNode {
     parentId: raw.parentId ?? null,
     type: raw.type === "category" || raw.type === "task" || raw.type === "info" ? raw.type : "concept",
     color: raw.color,
+    employee: typeof raw.employee === "string" ? raw.employee : "",
     size: Number.isFinite(raw.size) ? Math.min(2.6, Math.max(0.5, Number(raw.size))) : 1,
     pinned: Boolean(raw.pinned),
     collapsed: Boolean(raw.collapsed),

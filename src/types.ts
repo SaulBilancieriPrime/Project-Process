@@ -11,6 +11,7 @@ export interface GraphNode {
   parentId?: string | null;
   type: NodeKind;
   color?: string;
+  employee?: string;
   size: number;
   pinned: boolean;
   collapsed: boolean;

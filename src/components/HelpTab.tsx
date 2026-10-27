@@ -1,6 +1,6 @@
 export default function HelpTab() {
   return (
-    <div className="help-tab">
+    <div className="[&_section]:mb-4 [&_h2]:mt-0 [&_h2]:mb-2 [&_h2]:text-[11px] [&_h2]:tracking-wider [&_h2]:text-[var(--accent)] [&_h2]:uppercase [&_p]:mt-0 [&_p]:mb-2 [&_p]:text-xs [&_p]:leading-normal [&_p]:text-[var(--muted)]">
       <section>
         <h2>How to use this map</h2>
         <p>
@@ -12,7 +12,7 @@ export default function HelpTab() {
 
       <section>
         <h2>Navigate</h2>
-        <figure className="help-figure">
+        <figure className="mb-2.5 rounded-[10px] border border-[var(--line)] bg-[var(--card)] p-2 [&_svg]:block [&_svg]:h-auto [&_svg]:w-full [&_svg]:text-[var(--text)] [&_figcaption]:mt-1.5 [&_figcaption]:text-[11px] [&_figcaption]:leading-snug [&_figcaption]:text-[var(--muted)]">
           <svg viewBox="0 0 220 72" aria-hidden>
             <rect
               x="8"
@@ -66,10 +66,11 @@ export default function HelpTab() {
 
       <section>
         <h2>Select and edit</h2>
-        <ul className="help-list">
+        <ul className="mb-2.5 ml-0 list-disc pl-4 text-xs leading-normal text-[var(--muted)] [&_li]:mb-1.5 [&_strong]:text-[var(--text)]">
           <li>
-            <strong>Click a node</strong> — select it. Shift-click adds or
-            removes from the selection.
+            <strong>Click a node</strong> — select it and open a preview of
+            title, color, and assigned employee. Shift-click adds or removes
+            from the selection.
           </li>
           <li>
             <strong>Double-click a node</strong> — open the edit panel. Changes
@@ -90,7 +91,7 @@ export default function HelpTab() {
             line to edit arrows and type; Delete is in that panel.
           </li>
         </ul>
-        <figure className="help-figure">
+        <figure className="mb-2.5 rounded-[10px] border border-[var(--line)] bg-[var(--card)] p-2 [&_svg]:block [&_svg]:h-auto [&_svg]:w-full [&_svg]:text-[var(--text)] [&_figcaption]:mt-1.5 [&_figcaption]:text-[11px] [&_figcaption]:leading-snug [&_figcaption]:text-[var(--muted)]">
           <svg viewBox="0 0 220 78" aria-hidden>
             <circle cx="36" cy="38" r="12" fill="#5b9bd5" />
             <circle
@@ -165,7 +166,7 @@ export default function HelpTab() {
           Use the <strong>+</strong> button (top left) or right-click empty
           canvas. Both open the same menu.
         </p>
-        <ul className="help-list">
+        <ul className="mb-2.5 ml-0 list-disc pl-4 text-xs leading-normal text-[var(--muted)] [&_li]:mb-1.5 [&_strong]:text-[var(--text)]">
           <li>
             <strong>Add node</strong> — then click the canvas to place it. Esc
             cancels.
@@ -186,7 +187,7 @@ export default function HelpTab() {
 
       <section>
         <h2>Right-click menus</h2>
-        <figure className="help-figure">
+        <figure className="mb-2.5 rounded-[10px] border border-[var(--line)] bg-[var(--card)] p-2 [&_svg]:block [&_svg]:h-auto [&_svg]:w-full [&_svg]:text-[var(--text)] [&_figcaption]:mt-1.5 [&_figcaption]:text-[11px] [&_figcaption]:leading-snug [&_figcaption]:text-[var(--muted)]">
           <svg viewBox="0 0 220 92" aria-hidden>
             <rect
               x="10"
@@ -247,10 +248,11 @@ export default function HelpTab() {
             their flyouts.
           </figcaption>
         </figure>
-        <ul className="help-list">
+        <ul className="mb-2.5 ml-0 list-disc pl-4 text-xs leading-normal text-[var(--muted)] [&_li]:mb-1.5 [&_strong]:text-[var(--text)]">
           <li>
-            <strong>Node</strong> — add child, start a link, pin, collapse,
-            type, color, size, delete, or delete branch.
+            <strong>Node</strong> — add child (then click to place it, already
+            linked to this node), start a link, pin, collapse, type, color,
+            size, delete, or delete branch.
           </li>
           <li>
             <strong>Connection</strong> — insert a node in the middle, or delete
@@ -270,7 +272,7 @@ export default function HelpTab() {
           level, type, and color. Color filters match the current grouping (by
           level, type, or custom).
         </p>
-        <ul className="help-list">
+        <ul className="mb-2.5 ml-0 list-disc pl-4 text-xs leading-normal text-[var(--muted)] [&_li]:mb-1.5 [&_strong]:text-[var(--text)]">
           <li>
             Click chips or swatches to toggle. None selected means no
             constraint.
@@ -288,7 +290,7 @@ export default function HelpTab() {
 
       <section>
         <h2>Physics and layout</h2>
-        <ul className="help-list">
+        <ul className="mb-2.5 ml-0 list-disc pl-4 text-xs leading-normal text-[var(--muted)] [&_li]:mb-1.5 [&_strong]:text-[var(--text)]">
           <li>
             <strong>Fit / Reorg</strong> — frame the whole graph, or reheat the
             force layout.
@@ -306,7 +308,7 @@ export default function HelpTab() {
 
       <section>
         <h2>Save, history, and files</h2>
-        <ul className="help-list">
+        <ul className="mb-2.5 ml-0 list-disc pl-4 text-xs leading-normal text-[var(--muted)] [&_li]:mb-1.5 [&_strong]:text-[var(--text)]">
           <li>
             The graph still writes a recovery copy to this browser as you work.
           </li>
@@ -334,7 +336,7 @@ export default function HelpTab() {
 
       <section>
         <h2>Keyboard</h2>
-        <ul className="help-list">
+        <ul className="mb-2.5 ml-0 list-disc pl-4 text-xs leading-normal text-[var(--muted)] [&_li]:mb-1.5 [&_strong]:text-[var(--text)]">
           <li>
             <strong>Esc</strong> — close menus, cancel place/link, clear
             selection.

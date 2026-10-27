@@ -1,300 +1,78 @@
 import { LEVEL_COLORS } from "./graph/colors";
 import { DEFAULT_SETTINGS, type GraphDocument, type GraphLink, type GraphNode, type NodeKind } from "./types";
 
-
+const SAMPLE_RED = LEVEL_COLORS[0];
 
 type WorkflowBranch = {
   id: string;
   title: string;
-  color: string;
-  workflows: { id: string; title: string; activities: string[] }[];
+  workflows: { id: string; title: string }[];
 };
 
-const PRIME_PM_TREE: WorkflowBranch[] = [
+const MAJOR_WORKFLOWS: WorkflowBranch[] = [
   {
     id: "pursuit",
     title: "1.0 Pursuit (Win Work)",
-    color: LEVEL_COLORS[0],
     workflows: [
-      {
-        id: "1.1",
-        title: "1.1 Pursue Opportunity",
-        activities: [
-          "Market Awareness",
-          "Lead Identification",
-          "Client Engagement",
-          "Opportunity Qualification",
-          "Go / No-Go Decision",
-          "Pursuit Strategy",
-        ],
-      },
-      {
-        id: "1.2",
-        title: "1.2 Develop Proposal",
-        activities: [
-          "Scope Development",
-          "Fee Development",
-          "Schedule Development",
-          "Resource Planning",
-          "Proposal Writing",
-          "Proposal Submission",
-          "Proposal Review",
-        ],
-      },
-      {
-        id: "1.3",
-        title: "1.3 Contract & Risk",
-        activities: [
-          "Contract Review",
-          "Contract Execution",
-          "Terms & Conditions",
-          "Subconsultant Agreements",
-          "Risk Assessment",
-          "Insurance Requirements",
-          "Legal Coordination",
-        ],
-      },
+      { id: "1.1", title: "1.1 Pursue Opportunity" },
+      { id: "1.2", title: "1.2 Develop Proposal" },
+      { id: "1.3", title: "1.3 Contract & Risk" },
     ],
   },
   {
     id: "delivery",
     title: "2.0 Delivery (Deliver Work)",
-    color: LEVEL_COLORS[1],
     workflows: [
-      {
-        id: "2.1",
-        title: "2.1 Set Up Project",
-        activities: [
-          "Project Setup Form",
-          "Project Kickoff Preparation",
-          "Project Number Creation",
-          "Contact List Creation",
-          "BST Setup",
-          "Team Assignment",
-          "File Structure Setup",
-        ],
-      },
-      {
-        id: "2.2",
-        title: "2.2 Plan Project",
-        activities: [
-          "Scope Planning",
-          "Project Management Plan",
-          "WBS Development",
-          "Risk Planning",
-          "Schedule Development",
-          "Budget Planning",
-          "Resource Planning",
-        ],
-      },
-      {
-        id: "2.3",
-        title: "2.3 Execute Project",
-        activities: [
-          "Deliverable Management",
-          "Issue Resolution",
-          "Schedule Management",
-          "Progress Monitoring",
-          "Resource Management",
-          "Stakeholder Coordination",
-          "Subconsultant Management",
-        ],
-      },
-      {
-        id: "2.4",
-        title: "2.4 Manage Client",
-        activities: [
-          "Client Communication",
-          "Client Meetings",
-          "Expectation Management",
-          "Decision Tracking",
-          "Action Item Management",
-          "Escalation Management",
-          "Client Satisfaction",
-        ],
-      },
-      {
-        id: "2.5",
-        title: "2.5 Manage Quality",
-        activities: [
-          "QA Planning",
-          "QC Reviews",
-          "Independent Reviews",
-          "Deliverable Compliance",
-          "Standards Compliance",
-          "Comment Resolution",
-          "Quality Documentation",
-        ],
-      },
-      {
-        id: "2.6",
-        title: "2.6 Manage Changes",
-        activities: [
-          "Scope Changes",
-          "Schedule Changes",
-          "Budget Changes",
-          "Contract Amendments",
-          "Risk Evaluation",
-          "Approval Management",
-          "Change Documentation",
-        ],
-      },
-      {
-        id: "2.7",
-        title: "2.7 Close Project",
-        activities: [
-          "Contract Closeout",
-          "Client Feedback",
-          "Financial Closeout",
-          "Team Debrief",
-          "Final Deliverables",
-          "Lessons Learned",
-          "Archive Project Records",
-        ],
-      },
+      { id: "2.1", title: "2.1 Set Up Project" },
+      { id: "2.2", title: "2.2 Plan Project" },
+      { id: "2.3", title: "2.3 Execute Project" },
+      { id: "2.4", title: "2.4 Manage Client" },
+      { id: "2.5", title: "2.5 Manage Quality" },
+      { id: "2.6", title: "2.6 Manage Changes" },
+      { id: "2.7", title: "2.7 Close Project" },
     ],
   },
   {
     id: "business",
     title: "3.0 Business (Run the Business)",
-    color: LEVEL_COLORS[2],
     workflows: [
-      {
-        id: "3.1",
-        title: "3.1 Manage Financials",
-        activities: [
-          "Budget Monitoring",
-          "ETC Management",
-          "Revenue Recognition",
-          "Invoicing",
-          "Accounts Receivable",
-          "Writeups / Writeoffs",
-          "Forecasting",
-          "Profitability Management",
-        ],
-      },
-      {
-        id: "3.2",
-        title: "3.2 Manage Risk",
-        activities: [
-          "Contract Risk",
-          "Scope Risk",
-          "Schedule Risk",
-          "Financial Risk",
-          "Technical Risk",
-          "Safety Risk",
-          "Risk Register Management",
-          "Risk Mitigation Planning",
-        ],
-      },
-      {
-        id: "3.3",
-        title: "3.3 Manage Client Relationships",
-        activities: [
-          "Strategic Account Planning",
-          "Client Retention",
-          "Executive Engagement",
-          "Client Satisfaction Reviews",
-          "Relationship Mapping",
-          "Repeat Work Strategy",
-          "Cross-Selling Opportunities",
-          "Client Development Planning",
-        ],
-      },
-      {
-        id: "3.4",
-        title: "3.4 Grow the Business",
-        activities: [
-          "Market Development",
-          "Business Development",
-          "Opportunity Pipeline",
-          "CRM Management",
-          "Networking",
-          "Brand Representation",
-          "Capture Planning",
-          "Growth Strategy",
-        ],
-      },
+      { id: "3.1", title: "3.1 Manage Financials" },
+      { id: "3.2", title: "3.2 Manage Risk" },
+      { id: "3.3", title: "3.3 Manage Client Relationships" },
+      { id: "3.4", title: "3.4 Grow the Business" },
     ],
   },
   {
     id: "leadership",
     title: "4.0 Leadership (Lead People)",
-    color: LEVEL_COLORS[3],
     workflows: [
-      {
-        id: "4.1",
-        title: "4.1 Manage Team",
-        activities: [
-          "Recruiting & Hiring",
-          "Workforce Planning",
-          "Onboarding",
-          "Resource Planning",
-          "Performance Management",
-          "Employee Development",
-          "Recognition & Retention",
-          "Succession Planning",
-        ],
-      },
-      {
-        id: "4.2",
-        title: "4.2 Communication",
-        activities: [
-          "Team Communication",
-          "Client Communication",
-          "Meeting Management",
-          "Executive Communication",
-          "Difficult Conversations",
-          "Conflict Resolution",
-          "Presentation Skills",
-          "Documentation Standards",
-        ],
-      },
-      {
-        id: "4.3",
-        title: "4.3 Culture",
-        activities: [
-          "Accountability",
-          "Ownership",
-          "Collaboration",
-          "Professional Development",
-          "Business Builder Mindset",
-          "Ethics & Integrity",
-          "Knowledge Sharing",
-          "Continuous Improvement",
-        ],
-      },
+      { id: "4.1", title: "4.1 Manage Team" },
+      { id: "4.2", title: "4.2 Communication" },
+      { id: "4.3", title: "4.3 Culture" },
     ],
   },
 ];
-
-function slug(prefix: string, title: string) {
-  const base = title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-  return `${prefix}-${base}`.slice(0, 64);
-}
 
 function node(
   id: string,
   title: string,
   description: string,
   level: number,
+  parentId: string | null,
   x: number,
   y: number,
-  color: string,
-  type: NodeKind = "task",
-  size = 1.15,
+  type: NodeKind,
+  size: number,
 ): GraphNode {
   return {
     id,
     title,
     description,
     level,
-    parentId: null,
+    parentId,
     type,
-    color,
+    color: SAMPLE_RED,
+    employee: "",
     size,
     pinned: false,
     collapsed: false,
@@ -309,73 +87,55 @@ function link(source: string, target: string): GraphLink {
   return { id: `${source}->${target}`, source, target, kind: "parent", arrows: "one" };
 }
 
+function branchHeight(branch: WorkflowBranch, row: number) {
+  return Math.max(branch.workflows.length, 1) * row;
+}
+
 export function createSampleDocument(): GraphDocument {
   const nodes: GraphNode[] = [];
   const links: GraphLink[] = [];
 
   const rootId = "prime-pm-root";
   const xRoot = 0;
-  const xL1 = 300;
-  const xL2 = 620;
-  const xL3 = 940;
-  const row = 52;
+  const xL1 = 280;
+  const xL2 = 580;
+  const row = 56;
+  const gap = row * 1.6;
 
   let yCursor = 0;
-  const branchYs: number[] = [];
-
-  for (const branch of PRIME_PM_TREE) {
-    branchYs.push(yCursor);
-    let branchHeight = 0;
-    for (const wf of branch.workflows) {
-      branchHeight += Math.max(wf.activities.length, 1) * row;
-    }
-    branchHeight += (branch.workflows.length - 1) * row * 0.35;
-    yCursor += branchHeight + row * 2;
+  const starts: number[] = [];
+  for (const branch of MAJOR_WORKFLOWS) {
+    starts.push(yCursor);
+    yCursor += branchHeight(branch, row) + gap;
   }
+  const rootY = (starts[0] + (yCursor - gap)) / 2;
 
-  const rootY = (branchYs[0] + (yCursor - row * 2)) / 2;
   nodes.push(
     node(
       rootId,
       "PRIME PM",
-      "What activities make up each workflow?",
+      "What are the major workflows?",
       0,
+      null,
       xRoot,
       rootY,
-      LEVEL_COLORS[6],
       "concept",
       1.55,
     ),
   );
 
-  yCursor = 0;
-  for (const branch of PRIME_PM_TREE) {
-    const branchId = branch.id;
-    const branchCenterY = yCursor + countBranchHeight(branch, row) / 2;
-    nodes.push(
-      node(branchId, branch.title, branch.title, 1, xL1, branchCenterY, branch.color, "category", 1.35),
-    );
-    links.push(link(rootId, branchId));
+  MAJOR_WORKFLOWS.forEach((branch, index) => {
+    const height = branchHeight(branch, row);
+    const branchY = starts[index] + height / 2 - row / 2;
+    nodes.push(node(branch.id, branch.title, branch.title, 1, rootId, xL1, branchY, "category", 1.35));
+    links.push(link(rootId, branch.id));
 
-    let wfY = yCursor;
-    for (const wf of branch.workflows) {
-      const wfId = wf.id;
-      const wfCenterY = wfY + (wf.activities.length * row) / 2 - row / 2;
-      nodes.push(node(wfId, wf.title, wf.title, 2, xL2, wfCenterY, branch.color, "task", 1.22));
-      links.push(link(branchId, wfId));
-
-      wf.activities.forEach((activity, i) => {
-        const actId = slug(wfId, activity);
-        const y = wfY + i * row;
-        nodes.push(node(actId, activity, activity, 3, xL3, y, branch.color, "info", 1.05));
-        links.push(link(wfId, actId));
-      });
-
-      wfY += wf.activities.length * row + row * 0.35;
-    }
-
-    yCursor += countBranchHeight(branch, row) + row * 2;
-  }
+    branch.workflows.forEach((wf, i) => {
+      const y = starts[index] + i * row;
+      nodes.push(node(wf.id, wf.title, wf.title, 2, branch.id, xL2, y, "task", 1.18));
+      links.push(link(branch.id, wf.id));
+    });
+  });
 
   return {
     nodes,
@@ -389,13 +149,4 @@ export function createSampleDocument(): GraphDocument {
       cardInfo: false,
     },
   };
-}
-
-function countBranchHeight(branch: WorkflowBranch, row: number) {
-  let h = 0;
-  for (const wf of branch.workflows) {
-    h += wf.activities.length * row;
-  }
-  h += (branch.workflows.length - 1) * row * 0.35;
-  return h;
 }

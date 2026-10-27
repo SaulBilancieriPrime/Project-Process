@@ -7,6 +7,7 @@ import PlusMenuButton from "./components/PlusMenuButton";
 import GraphCanvas, { type GraphHandle } from "./components/GraphCanvas";
 import Header from "./components/Header";
 import NodeContextMenu from "./components/NodeContextMenu";
+import NodePreviewPanel from "./components/NodePreviewPanel";
 import SaveConfirmModal from "./components/SaveConfirmModal";
 import Sidebar, { type SidebarTab } from "./components/Sidebar";
 import {
@@ -29,6 +30,7 @@ import {
   saveDocument,
   saveTheme,
 } from "./storage";
+import { ctxBox, cx, dangerText, ghostBtn, menuItem, plusMenuBox, toolBtn, toolOn } from "./styles";
 import type { ArrowStyle, GraphLink, GraphNode, GraphSettings, NodeKind } from "./types";
 
 type MenuState =
@@ -37,6 +39,8 @@ type MenuState =
   | { kind: "canvas"; x: number; y: number };
 
 type PickState = { kind: "node" | "link"; id: string };
+type PlaceState = { parentId?: string };
+type PendingEdit = { kind: "node"; id: string } | { kind: "link"; id: string };
 
 export default function App() {
   const initial = useMemo(() => loadDocument(), []);
@@ -50,7 +54,7 @@ export default function App() {
   const [editingLinkId, setEditingLinkId] = useState<string | null>(null);
   const [picked, setPicked] = useState<PickState | null>(null);
   const [connect, setConnect] = useState<{ arrows: ArrowStyle; from?: string } | null>(null);
-  const [placing, setPlacing] = useState(false);
+  const [placing, setPlacing] = useState<PlaceState | null>(null);
   const [plusOpen, setPlusOpen] = useState(false);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -74,9 +78,15 @@ export default function App() {
   const editSaveRef = useRef<(() => void) | null>(null);
   const [actions, setActions] = useState<HistoryAction[]>([]);
   const [editLocked, setEditLocked] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [pendingEdit, setPendingEdit] = useState<PendingEdit | null>(null);
 
   const editing = nodes.find((n) => n.id === editingId) ?? null;
   const editingLink = links.find((l) => l.id === editingLinkId) ?? null;
+  const preview =
+    previewOpen && !editing && !editingLink && !menu && !placing && !connect && selectedIds.length === 1
+      ? nodes.find((n) => n.id === selectedIds[0]) ?? null
+      : null;
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -116,19 +126,54 @@ export default function App() {
     setEditLocked(false);
     setEditingId(null);
     setEditingLinkId(null);
+    setPreviewOpen(false);
+    setPendingEdit(null);
+  }, []);
+
+  useEffect(() => {
+    if (!pendingEdit) return;
+    if (editingId !== null || editingLinkId !== null) return;
+    const next = pendingEdit;
+    const timer = window.setTimeout(() => {
+      setPendingEdit(null);
+      if (next.kind === "node") {
+        setSelectedIds([next.id]);
+        setPicked({ kind: "node", id: next.id });
+        setEditingLinkId(null);
+        setEditingId(next.id);
+      } else {
+        setSelectedIds([]);
+        setPicked({ kind: "link", id: next.id });
+        setEditingId(null);
+        setEditingLinkId(next.id);
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [pendingEdit, editingId, editingLinkId]);
+
+  const dismissPreview = useCallback(() => {
+    setPreviewOpen(false);
+    setSelectedIds([]);
+    setPicked(null);
   }, []);
 
   useEffect(() => {
     const editingOpen = editingId !== null || editingLinkId !== null;
-    if (!menu && !editingOpen) return;
+    const previewShowing = previewOpen && !editingOpen && selectedIds.length === 1;
+    if (!menu && !editingOpen && !previewShowing) return;
     const onPointerDown = (e: PointerEvent) => {
       const target = e.target;
       if (!(target instanceof Element)) return;
+      const onGraph = Boolean(target.closest(".graph-host"));
       if (menu && !target.closest(".ctx, .plus-menu-floating")) {
         setMenu(null);
       }
-      if (editingOpen && !editLocked && !target.closest(".edit-float")) {
+      if (editingOpen && !editLocked && !target.closest(".edit-float") && !onGraph) {
         dismissEditPanel();
+        setSelectedIds([]);
+        setPicked(null);
+      } else if (previewShowing && !target.closest(".edit-float") && !onGraph) {
+        dismissPreview();
       }
     };
     const timer = window.setTimeout(() => window.addEventListener("pointerdown", onPointerDown, true), 0);
@@ -136,7 +181,7 @@ export default function App() {
       window.clearTimeout(timer);
       window.removeEventListener("pointerdown", onPointerDown, true);
     };
-  }, [menu, editingId, editingLinkId, editLocked, dismissEditPanel]);
+  }, [menu, editingId, editingLinkId, editLocked, dismissEditPanel, dismissPreview, previewOpen, selectedIds.length]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -145,12 +190,14 @@ export default function App() {
         if (editLocked) return;
         setMenu(null);
         setConnect(null);
-        setPlacing(false);
+        setPlacing(null);
         setPlusOpen(false);
         setEditingId(null);
         setEditingLinkId(null);
         setPicked(null);
         setSelectedIds([]);
+        setPreviewOpen(false);
+        setPendingEdit(null);
         setSaveOpen(false);
       }
       if (typing) return;
@@ -168,8 +215,7 @@ export default function App() {
         else if (selectedIds.length) removeNodes(selectedIds);
       }
       if (e.key.toLowerCase() === "n") {
-        setConnect(null);
-        setPlacing(true);
+        startPlace();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -326,6 +372,8 @@ export default function App() {
       label = `Resized ${name}`;
     } else if (patch.type && Object.keys(patch).length === 1) {
       label = `Changed type of ${name}`;
+    } else if (patch.employee !== undefined && Object.keys(patch).length === 1) {
+      label = `Assigned ${name}`;
     }
     applyGraph(label, { nodes: nodes.map((n) => (n.id === id ? { ...n, ...patch } : n)) }, coalesceKey);
     const live = liveGraphNodes().find((n) => n.id === id);
@@ -360,6 +408,19 @@ export default function App() {
   }
 
   function addLooseNode(at: { x: number; y: number }, edit = false) {
+    const parentId = placing?.parentId;
+    const parent = parentId
+      ? (liveNode(parentId) ?? nodes.find((n) => n.id === parentId)) ?? null
+      : null;
+    if (parent) {
+      const next = addChild(nodes, links, parent, at);
+      applyGraph(`Added child under ${parent.title || "node"}`, { nodes: next.nodes, links: next.links });
+      setSelectedIds([next.id]);
+      setPicked({ kind: "node", id: next.id });
+      setPlacing(null);
+      if (edit) setEditingId(next.id);
+      return;
+    }
     const created = blankNode({
       title: "New idea",
       level: 2,
@@ -371,22 +432,26 @@ export default function App() {
     applyGraph(`Added ${created.title}`, { nodes: [...nodes, created] });
     setSelectedIds([created.id]);
     setPicked({ kind: "node", id: created.id });
-    setPlacing(false);
+    setPlacing(null);
     if (edit) setEditingId(created.id);
   }
 
-  function startPlace() {
+  function startPlace(parentId?: string) {
     if (editLocked) return;
     setConnect(null);
     setMenu(null);
     setEditingId(null);
     setEditingLinkId(null);
-    setPlacing(true);
+    setPlacing({ parentId });
+    if (parentId) {
+      setSelectedIds([parentId]);
+      setPicked({ kind: "node", id: parentId });
+    }
   }
 
   function startLink(arrows: ArrowStyle, from?: string) {
     if (editLocked) return;
-    setPlacing(false);
+    setPlacing(null);
     setMenu(null);
     setEditingId(null);
     setEditingLinkId(null);
@@ -451,6 +516,11 @@ export default function App() {
 
   function pickNode(id: string, additive = false) {
     if (editLocked) return;
+    if (!additive && editingId !== null && editingId !== id) {
+      dismissEditPanel();
+    } else if (!additive && editingLinkId !== null) {
+      dismissEditPanel();
+    }
     setSelectedIds((prev) => {
       if (additive) return prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id];
       return [id];
@@ -459,6 +529,7 @@ export default function App() {
     setEditingLinkId(null);
     setMenu(null);
     setPlusOpen(false);
+    setPreviewOpen(!additive);
   }
 
   function pickLink(id: string) {
@@ -468,6 +539,45 @@ export default function App() {
     setEditingId(null);
     setMenu(null);
     setPlusOpen(false);
+    setPreviewOpen(false);
+  }
+
+  function requestNodeEdit(id: string) {
+    if (editLocked) return;
+    setPreviewOpen(false);
+    setMenu(null);
+    setPlusOpen(false);
+    if (editingId === id && editingLinkId === null) return;
+    if (editingId !== null || editingLinkId !== null) {
+      setEditLocked(false);
+      setPendingEdit({ kind: "node", id });
+      setEditingId(null);
+      setEditingLinkId(null);
+      return;
+    }
+    setSelectedIds([id]);
+    setPicked({ kind: "node", id });
+    setEditingLinkId(null);
+    setEditingId(id);
+  }
+
+  function requestLinkEdit(id: string) {
+    if (editLocked) return;
+    setPreviewOpen(false);
+    setMenu(null);
+    setPlusOpen(false);
+    if (editingLinkId === id && editingId === null) return;
+    if (editingId !== null || editingLinkId !== null) {
+      setEditLocked(false);
+      setPendingEdit({ kind: "link", id });
+      setEditingId(null);
+      setEditingLinkId(null);
+      return;
+    }
+    setSelectedIds([]);
+    setPicked({ kind: "link", id });
+    setEditingId(null);
+    setEditingLinkId(id);
   }
 
   function liveNode(id: string) {
@@ -510,14 +620,14 @@ export default function App() {
   }
 
   const editPos = useMemo(() => {
-    const live = editing ? liveNode(editing.id) : null;
+    const live = editing ? liveNode(editing.id) : preview ? liveNode(preview.id) : null;
     if (!live || live.x == null || live.y == null) return { left: 80, top: 80 };
     const s = screenOf(live.x, live.y);
     return {
       left: Math.min(window.innerWidth - 300, Math.max(12, s.left + 18)),
       top: Math.min(window.innerHeight - 280, Math.max(60, s.top - 20)),
     };
-  }, [editing, size, zoom]);
+  }, [editing, preview, size, zoom]);
 
   const editLinkPos = useMemo(() => {
     if (!editingLink) return { left: 80, top: 80 };
@@ -568,7 +678,7 @@ export default function App() {
   }, [picked, selectedIds, links, size, zoom]);
 
   return (
-    <div className="app">
+    <div className="flex h-full min-h-0 flex-col">
       <Header
         nodeCount={nodes.length}
         linkCount={links.length}
@@ -596,7 +706,7 @@ export default function App() {
           setEditingId(null);
           setEditingLinkId(null);
           setPicked(null);
-          setPlacing(false);
+          setPlacing(null);
           setConnect(null);
           showToast("Loaded sample process");
           window.setTimeout(() => {
@@ -610,9 +720,9 @@ export default function App() {
         }}
       />
 
-      <div className={`stage${sidebarOpen ? " has-side" : ""}`} ref={stageRef}>
+      <div className={cx("stage relative min-h-0 flex-1 bg-[var(--graph-bg)]", sidebarOpen && "has-side")} ref={stageRef}>
         <div
-          className="graph-wrap"
+          className="graph-wrap absolute inset-0"
           onContextMenu={(e) => e.preventDefault()}
         >
           <GraphCanvas
@@ -624,7 +734,8 @@ export default function App() {
             hoveredId={hoveredId}
             connectFrom={connect?.from ?? null}
             connectArmed={Boolean(connect)}
-            placeArmed={placing}
+            placeArmed={Boolean(placing)}
+            placeFrom={placing?.parentId ?? null}
             linkArrows={connect?.arrows ?? "none"}
             search={search}
             levels={levels}
@@ -638,10 +749,7 @@ export default function App() {
             onSelect={(id, additive) => {
               if (editLocked) return;
               if (id) pickNode(id, additive);
-              else {
-                setSelectedIds([]);
-                setPicked(null);
-              }
+              else dismissPreview();
             }}
             onMarquee={(ids, additive) => {
               if (editLocked) return;
@@ -680,17 +788,8 @@ export default function App() {
             }}
             onSelectLink={pickLink}
             onHover={setHoveredId}
-            onEdit={(id) => {
-              if (editLocked) return;
-              pickNode(id);
-              setEditingId(id);
-              setEditingLinkId(null);
-            }}
-            onEditLink={(id) => {
-              if (editLocked) return;
-              pickLink(id);
-              setEditingLinkId(id);
-            }}
+            onEdit={(id) => requestNodeEdit(id)}
+            onEditLink={(id) => requestLinkEdit(id)}
             onNodeMenu={(id, x, y) => {
               setSelectedIds((prev) => (prev.includes(id) ? prev : [id]));
               openContextMenu({ kind: "node", id, x, y });
@@ -708,10 +807,8 @@ export default function App() {
                 return;
               }
               setMenu(null);
-              setSelectedIds([]);
-              setEditingId(null);
-              setEditingLinkId(null);
-              setPicked(null);
+              if (!editLocked) dismissEditPanel();
+              dismissPreview();
               if (dbl) addLooseNode(graph);
             }}
             onPlace={addLooseNode}
@@ -770,9 +867,11 @@ export default function App() {
         </div>
 
         {(placing || connect || selectedIds.length > 1) && (
-          <div className="hint">
+          <div className="absolute top-3 left-1/2 z-[8] -translate-x-1/2 rounded-full bg-[rgba(27,58,107,0.92)] px-3 py-1.5 text-xs font-bold tracking-wide text-[#f3f2f1]">
             {placing
-              ? "Click to place a node · Esc to cancel"
+              ? placing.parentId
+                ? "Click to place a child · Esc to cancel"
+                : "Click to place a node · Esc to cancel"
               : connect?.from
                 ? "Click the next node · Esc to cancel"
                 : connect
@@ -783,7 +882,7 @@ export default function App() {
 
         <PlusMenuButton
           open={plusOpen}
-          armed={placing || Boolean(connect)}
+          armed={Boolean(placing) || Boolean(connect)}
           onOpen={(open) => {
             if (open) {
               setMenu(null);
@@ -815,7 +914,7 @@ export default function App() {
 
         <button
           type="button"
-          className={`side-btn side-toggle${sidebarOpen ? " is-on" : ""}`}
+          className={cx(toolBtn, "side-toggle absolute top-3 right-3 z-[9] [.has-side_&]:right-[312px] max-[820px]:[.has-side_&]:top-auto max-[820px]:[.has-side_&]:right-3 max-[820px]:[.has-side_&]:bottom-[calc(42%+8px)]", sidebarOpen && toolOn)}
           onClick={() => setSidebarOpen((v) => !v)}
         >
           {sidebarOpen ? "Hide panel" : "Panel"}
@@ -846,11 +945,11 @@ export default function App() {
       </div>
 
       {selectedIds.length > 1 && !menu && !editing && !editingLink && !connect && !placing && (
-        <div className="item-actions" style={actionPos}>
-          <button type="button" disabled>
+        <div className="item-actions fixed z-[28] flex gap-1 rounded-[10px] border border-[var(--line)] bg-[color-mix(in_srgb,var(--card)_94%,transparent)] p-1 shadow-[var(--shadow)] backdrop-blur-[10px]" style={actionPos}>
+          <button type="button" className={ghostBtn} disabled>
             {selectedIds.length} selected
           </button>
-          <button type="button" className="danger" onClick={() => removeNodes(selectedIds)}>
+          <button type="button" className={cx(ghostBtn, dangerText)} onClick={() => removeNodes(selectedIds)}>
             Delete
           </button>
         </div>
@@ -864,15 +963,7 @@ export default function App() {
             node={ctxNode}
             x={menu.x}
             y={menu.y}
-            onAddChild={() => {
-              const parent = liveNode(menu.id);
-              if (!parent) return;
-              const next = addChild(nodes, links, parent);
-              applyGraph(`Added child under ${parent.title || "node"}`, { nodes: next.nodes, links: next.links });
-              setSelectedIds([next.id]);
-              setEditingId(next.id);
-              setMenu(null);
-            }}
+            onAddChild={() => startPlace(menu.id)}
             onLink={(arrows) => startLink(arrows, menu.id)}
             onTogglePin={() => {
               updateNode(menu.id, setPinned(ctxNode, !ctxNode.pinned));
@@ -882,9 +973,6 @@ export default function App() {
               updateNode(menu.id, { collapsed: !ctxNode.collapsed });
               setMenu(null);
             }}
-            onType={(kind) => updateNode(menu.id, { type: kind })}
-            onColor={(color) => updateNode(menu.id, { color })}
-            onSize={(size) => updateNode(menu.id, { size })}
             onDelete={() => removeNode(menu.id, false)}
             onDeleteBranch={() => removeNode(menu.id, true)}
           />
@@ -892,14 +980,14 @@ export default function App() {
       })()}
 
       {menu?.kind === "link" && (
-        <div className="ctx" style={{ left: menu.x, top: menu.y }}>
-          <button type="button" onClick={() => insertNodeOnLink(menu.id)}>
+        <div className={cx("ctx", ctxBox)} style={{ left: menu.x, top: menu.y }}>
+          <button type="button" className={menuItem} onClick={() => insertNodeOnLink(menu.id)}>
             Insert node here
           </button>
-          <div className="sep" />
+          <div className="sep mx-0.5 my-1 h-px bg-[var(--line)]" />
           <button
             type="button"
-            className="danger"
+            className={cx(menuItem, dangerText)}
             onClick={() => removeLink(menu.id)}
           >
             Delete connection
@@ -908,7 +996,7 @@ export default function App() {
       )}
 
       {menu?.kind === "canvas" && (
-        <div className="plus-menu plus-menu-floating" style={{ left: menu.x, top: menu.y }}>
+        <div className={cx("plus-menu plus-menu-floating fixed z-40", plusMenuBox)} style={{ left: menu.x, top: menu.y }}>
           <PlusMenu
             onAddNode={startPlace}
             onLink={(arrows) => startLink(arrows)}
@@ -919,12 +1007,20 @@ export default function App() {
 
       {editLocked && (
         <div
-          className="edit-lock"
+          className="edit-lock fixed inset-0 z-[85] bg-[rgba(12,16,24,0.38)]"
           onClick={() => window.alert("Save or cancel your edits before leaving this panel.")}
           onContextMenu={(e) => {
             e.preventDefault();
             window.alert("Save or cancel your edits before leaving this panel.");
           }}
+        />
+      )}
+
+      {preview && (
+        <NodePreviewPanel
+          node={preview}
+          colorBy={settings.colorBy}
+          style={editPos}
         />
       )}
 
@@ -938,12 +1034,10 @@ export default function App() {
           onDirty={setEditLocked}
           onSave={(patch) => {
             updateNode(editing.id, patch);
-            setEditLocked(false);
-            setEditingId(null);
+            dismissEditPanel();
           }}
           onClose={() => {
-            setEditLocked(false);
-            setEditingId(null);
+            dismissEditPanel();
           }}
           onDelete={() => removeNode(editing.id, false)}
         />
@@ -958,12 +1052,10 @@ export default function App() {
           onDirty={setEditLocked}
           onSave={(patch) => {
             updateLink(editingLink.id, patch);
-            setEditLocked(false);
-            setEditingLinkId(null);
+            dismissEditPanel();
           }}
           onClose={() => {
-            setEditLocked(false);
-            setEditingLinkId(null);
+            dismissEditPanel();
           }}
           onDelete={() => removeLink(editingLink.id)}
         />
@@ -975,7 +1067,7 @@ export default function App() {
         onConfirm={commitSave}
         onContinue={() => setSaveOpen(false)}
       />
-      {toast && <div className="toast">{toast}</div>}
+      {toast && <div className="fixed bottom-[18px] left-1/2 z-[80] -translate-x-1/2 rounded-lg bg-[#1b1b1b] px-3 py-2 text-xs text-white dark:bg-[#f3f2f1] dark:text-[#1b1b1b]">{toast}</div>}
       <input
         ref={importRef}
         type="file"
