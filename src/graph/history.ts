@@ -100,8 +100,6 @@ export function diffSnapshots(saved: GraphSnapshot, current: GraphSnapshot): Cha
     if ((prev.color ?? "") !== (node.color ?? "")) details.push("Color changed");
     if ((prev.employee ?? "") !== (node.employee ?? "")) details.push("Employee changed");
     if (Math.abs((prev.size ?? 1) - (node.size ?? 1)) > 0.04) details.push("Size changed");
-    if (prev.pinned !== node.pinned) details.push(node.pinned ? "Pinned" : "Unpinned");
-    if (prev.collapsed !== node.collapsed) details.push(node.collapsed ? "Collapsed" : "Expanded");
     if (details.length) {
       changes.push({
         id: `node-upd-${node.id}`,

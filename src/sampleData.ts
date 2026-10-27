@@ -74,12 +74,8 @@ function node(
     color: SAMPLE_RED,
     employee: "",
     size,
-    pinned: false,
-    collapsed: false,
     x,
     y,
-    fx: x,
-    fy: y,
   };
 }
 

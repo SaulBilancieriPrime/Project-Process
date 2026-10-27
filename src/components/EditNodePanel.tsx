@@ -5,16 +5,11 @@ import {
   type CSSProperties,
   type MutableRefObject,
 } from "react";
-import { LEVEL_COLORS, nodeColor, SIZE_PRESETS } from "../graph/colors";
+import { LEVEL_COLORS, nodeColor } from "../graph/colors";
 import { KIND_LABEL } from "../graph/ops";
 import { cx, dangerText, editFloat, field, fieldArea, fieldLabel, ghostBtn, primaryBtn, swatch, swatchOn } from "../styles";
 import type { ColorBy, GraphNode, NodeKind } from "../types";
-
-function nearestSizeLabel(size: number) {
-  return SIZE_PRESETS.reduce((best, preset) =>
-    Math.abs(preset.value - size) < Math.abs(best.value - size) ? preset : best,
-  ).label;
-}
+import SizePresetPicker from "./SizePresetPicker";
 
 type Draft = {
   title: string;
@@ -149,28 +144,7 @@ export default function EditNodePanel({
         ))}
       </select>
       <label className={fieldLabel}>Size</label>
-      <div className="flex min-h-12 items-end justify-between gap-0.5">
-        {SIZE_PRESETS.map(({ value, label, dot }) => (
-          <button
-            key={label}
-            type="button"
-            className={cx(
-              "edit-size-btn flex min-w-0 flex-1 cursor-pointer flex-col items-center justify-end gap-1.5 border-0 bg-transparent pt-1",
-              nearestSizeLabel(draft.size) === label && "on",
-            )}
-            title={`Size ${label}`}
-            aria-label={`Size ${label}`}
-            aria-pressed={nearestSizeLabel(draft.size) === label}
-            onClick={() => patch({ size: value })}
-          >
-            <span
-              className="edit-size-node pointer-events-none block rounded-full bg-[var(--edit-accent,var(--accent))]"
-              style={{ width: dot, height: dot }}
-            />
-            <span className={cx("text-[9px] leading-none font-bold tracking-wide text-[var(--muted)]", nearestSizeLabel(draft.size) === label && "text-[var(--text)]")}>{label}</span>
-          </button>
-        ))}
-      </div>
+      <SizePresetPicker value={draft.size} onSelect={(size) => patch({ size })} />
 
       <div className="mt-2.5 flex items-center justify-between gap-1.5 pt-3">
         {dirty ? (

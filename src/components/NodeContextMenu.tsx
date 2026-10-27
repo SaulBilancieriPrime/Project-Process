@@ -1,38 +1,44 @@
-import type { ArrowStyle, GraphNode } from "../types";
 import { ctxBox, cx, dangerText, menuItem } from "../styles";
 import LinkMenuOptions from "./LinkMenuOptions";
+import SizePresetPicker from "./SizePresetPicker";
+import type { ArrowStyle } from "../types";
 
 type Props = {
-  node: GraphNode;
   x: number;
   y: number;
-  onAddChild: () => void;
+  accent?: string;
+  onAddNode: (size: number) => void;
   onLink: (arrows: ArrowStyle) => void;
-  onTogglePin: () => void;
-  onToggleCollapse: () => void;
   onDelete: () => void;
   onDeleteBranch: () => void;
 };
 
 export default function NodeContextMenu({
-  node,
   x,
   y,
-  onAddChild,
+  accent,
+  onAddNode,
   onLink,
-  onTogglePin,
-  onToggleCollapse,
   onDelete,
   onDeleteBranch,
 }: Props) {
   return (
     <div className={cx("ctx", ctxBox)} style={{ left: x, top: y }}>
-      <button type="button" className={menuItem} onClick={onAddChild}>
-        Add child
-      </button>
       <div className="ctx-flyout relative">
         <button type="button" className={cx(menuItem, "ctx-flyout-trigger justify-between gap-3")}>
-          Link
+          Add Node
+          <span className="ctx-flyout-caret text-sm leading-none text-[var(--muted)]" aria-hidden>
+            ›
+          </span>
+        </button>
+        <div className="ctx-sub ctx-sub-size absolute bottom-0 left-[calc(100%+4px)] z-[1] hidden w-[12.5dvw] rounded-[10px] border border-[var(--line)] bg-[var(--card)] px-2 py-2 shadow-[var(--shadow)]">
+          <div className="mx-1 mb-1 text-[10px] font-bold tracking-wider text-[var(--muted)] uppercase">Size</div>
+          <SizePresetPicker accent={accent} onSelect={onAddNode} />
+        </div>
+      </div>
+      <div className="ctx-flyout relative">
+        <button type="button" className={cx(menuItem, "ctx-flyout-trigger justify-between gap-3")}>
+          Add Link
           <span className="ctx-flyout-caret text-sm leading-none text-[var(--muted)]" aria-hidden>
             ›
           </span>
@@ -41,12 +47,6 @@ export default function NodeContextMenu({
           <LinkMenuOptions onLink={onLink} />
         </div>
       </div>
-      <button type="button" className={menuItem} onClick={onTogglePin}>
-        {node.pinned ? "Unpin" : "Pin"}
-      </button>
-      <button type="button" className={menuItem} onClick={onToggleCollapse}>
-        {node.collapsed ? "Expand branch" : "Collapse branch"}
-      </button>
       <div className="sep mx-0.5 my-1 h-px bg-[var(--line)]" />
       <button type="button" className={cx(menuItem, dangerText)} onClick={onDelete}>
         Delete

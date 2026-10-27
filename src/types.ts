@@ -13,8 +13,6 @@ export interface GraphNode {
   color?: string;
   employee?: string;
   size: number;
-  pinned: boolean;
-  collapsed: boolean;
   x?: number;
   y?: number;
   vx?: number;

@@ -209,13 +209,13 @@ export default function HelpTab() {
               Node menu
             </text>
             <text x="22" y="46" fontSize="8" fill="currentColor">
-              Add child
+              Add Node ›
             </text>
             <text x="22" y="60" fontSize="8" fill="currentColor">
               Link ›
             </text>
             <text x="22" y="74" fontSize="8" fill="currentColor">
-              Type ›
+              Delete
             </text>
             <rect
               x="118"
@@ -244,15 +244,15 @@ export default function HelpTab() {
             </text>
           </svg>
           <figcaption>
-            Only one floating menu is open at a time. Hover Link or Type to open
-            their flyouts.
+            Only one floating menu is open at a time. Hover Add Node or Link to
+            open their flyouts.
           </figcaption>
         </figure>
         <ul className="mb-2.5 ml-0 list-disc pl-4 text-xs leading-normal text-[var(--muted)] [&_li]:mb-1.5 [&_strong]:text-[var(--text)]">
           <li>
-            <strong>Node</strong> — add child (then click to place it, already
-            linked to this node), start a link, pin, collapse, type, color,
-            size, delete, or delete branch.
+            <strong>Node</strong> — add a node (pick a size, then click to place
+            it, already linked to this node), start a link, delete, or delete
+            branch.
           </li>
           <li>
             <strong>Connection</strong> — insert a node in the middle, or delete
@@ -296,8 +296,8 @@ export default function HelpTab() {
             force layout.
           </li>
           <li>
-            <strong>Physics</strong> — nearby nodes settle after you drag. Pin a
-            node to hold its place.
+            <strong>Physics</strong> — nearby nodes settle after you drag. Turn
+            physics off to hold every node in place.
           </li>
           <li>
             <strong>Radial branch</strong> — pulls levels into rings when

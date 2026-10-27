@@ -15,12 +15,10 @@ export function blankNode(partial: Partial<GraphNode> & { title?: string }): Gra
     color: partial.color,
     employee: partial.employee ?? "",
     size: partial.size ?? sizeForLevel(level),
-    pinned: Boolean(partial.pinned),
-    collapsed: false,
     x: partial.x,
     y: partial.y,
-    fx: partial.pinned ? partial.x : undefined,
-    fy: partial.pinned ? partial.y : undefined,
+    fx: partial.fx,
+    fy: partial.fy,
   };
 }
 
@@ -29,23 +27,23 @@ export function addChild(
   links: GraphLink[],
   parent: GraphNode,
   at?: { x: number; y: number },
+  size?: number,
 ): { nodes: GraphNode[]; links: GraphLink[]; id: string } {
   const siblings = nodes.filter((n) => n.parentId === parent.id);
   const angle = (siblings.length * 0.85) - 0.4;
   const dist = 48 + parent.size * 18;
   const child = blankNode({
-    title: "New child",
+    title: "New idea",
     level: parent.level + 1,
     parentId: parent.id,
     type: parent.type === "category" ? "concept" : parent.type,
+    color: parent.color,
+    size,
     x: at?.x ?? (parent.x ?? 0) + Math.cos(angle) * dist,
     y: at?.y ?? (parent.y ?? 0) + Math.sin(angle) * dist,
-    pinned: Boolean(at),
   });
   return {
-    nodes: parent.collapsed
-      ? [...nodes.map((n) => (n.id === parent.id ? { ...n, collapsed: false } : n)), child]
-      : [...nodes, child],
+    nodes: [...nodes, child],
     links: [...links, { id: newId(), source: parent.id, target: child.id, kind: "parent", arrows: "none" }],
     id: child.id,
   };
@@ -71,7 +69,6 @@ export function insertNodeBetween(
     type: src.type === tgt.type ? src.type : "concept",
     x,
     y,
-    pinned: true,
   });
 
   const rest = links.filter((l) => l.id !== linkId);
@@ -151,27 +148,6 @@ export function deleteNode(nodes: GraphNode[], links: GraphLink[], id: string, b
   }
 
   return { nodes: nextNodes, links: nextLinks };
-}
-
-export function setPinned(node: GraphNode, pinned: boolean): GraphNode {
-  return {
-    ...node,
-    pinned,
-    fx: pinned ? node.x ?? node.fx : undefined,
-    fy: pinned ? node.y ?? node.fy : undefined,
-  };
-}
-
-export function applyPhysicsPins(nodes: GraphNode[], physics: boolean): GraphNode[] {
-  return nodes.map((n) => {
-    if (!physics) {
-      return { ...n, fx: n.x ?? n.fx ?? 0, fy: n.y ?? n.fy ?? 0 };
-    }
-    if (n.pinned) {
-      return { ...n, fx: n.x ?? n.fx ?? 0, fy: n.y ?? n.fy ?? 0 };
-    }
-    return { ...n, fx: undefined, fy: undefined };
-  });
 }
 
 export const KIND_LABEL: Record<NodeKind, string> = {

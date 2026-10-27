@@ -3,13 +3,13 @@ import type { ColorBy, GraphNode, NodeKind } from "../types";
 export const LEVEL_COLORS = ["#f43f5e", "#f59e0b", "#34d399"];
 
 export const SIZE_PRESETS = [
-  { value: 0.5, label: "xs", dot: 8 },
-  { value: 1.5, label: "s", dot: 11 },
-  { value: 2.5, label: "m", dot: 14 },
-  { value: 3.5, label: "l", dot: 18 },
-  { value: 4.5, label: "xl", dot: 22 },
-  { value: 5.5, label: "2xl", dot: 26 },
-  { value: 6.5, label: "3xl", dot: 32 },
+  { value: 0.5, label: "XS", dot: 8 },
+  { value: 1.5, label: "S", dot: 11 },
+  { value: 2.5, label: "M", dot: 14 },
+  { value: 3.5, label: "L", dot: 18 },
+  { value: 4.5, label: "XL", dot: 22 },
+  { value: 5.5, label: "2XL", dot: 26 },
+  { value: 6.5, label: "3XL", dot: 32 },
 ] as const;
 
 export const TYPE_COLORS: Record<NodeKind, string> = {
@@ -78,9 +78,6 @@ export function graphTheme(theme: "light" | "dark") {
       cardMuted: "rgba(91, 98, 112, 0.92)",
       ring: "#1b3a6b",
       connectRing: "#8a6d00",
-      badge: "#ffffff",
-      badgeText: "#1b1b1b",
-      pin: "rgba(27, 58, 107, 0.9)",
     };
   }
   return {
@@ -97,8 +94,5 @@ export function graphTheme(theme: "light" | "dark") {
     cardMuted: "rgba(210, 210, 210, 0.78)",
     ring: "#f5f5f5",
     connectRing: "#f3e8c8",
-    badge: "#2c2c2c",
-    badgeText: "#fff",
-    pin: "rgba(243, 243, 243, 0.85)",
   };
 }

@@ -17,15 +17,6 @@ export function descendantsOf(nodes: GraphNode[], id: string) {
   return out;
 }
 
-export function hiddenByCollapse(nodes: GraphNode[]) {
-  const hidden = new Set<string>();
-  for (const node of nodes) {
-    if (!node.collapsed) continue;
-    for (const id of descendantsOf(nodes, node.id)) hidden.add(id);
-  }
-  return hidden;
-}
-
 export function linkEnds(link: GraphLink | { source: unknown; target: unknown }) {
   const src = typeof link.source === "object" && link.source && "id" in link.source
     ? String((link.source as { id: string }).id)
@@ -59,8 +50,4 @@ export function isFiltered(
     if (!allowed.has(paint)) return false;
   }
   return true;
-}
-
-export function collapsedChildCount(nodes: GraphNode[], id: string) {
-  return descendantsOf(nodes, id).length;
 }

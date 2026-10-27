@@ -1,8 +1,8 @@
 import { forceCollide, forceRadial } from "d3-force";
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import ForceGraph2D, { type ForceGraphMethods } from "react-force-graph-2d";
-import { graphTheme, nodeColor, withAlpha } from "../graph/colors";
-import { collapsedChildCount, hiddenByCollapse, isFiltered, linkEnds } from "../graph/visibility";
+import { graphTheme, nodeColor, sizeForLevel, withAlpha } from "../graph/colors";
+import { isFiltered, linkEnds } from "../graph/visibility";
 import type { ArrowStyle, GraphLink, GraphNode, GraphSettings, NodeKind } from "../types";
 
 export type GraphHandle = ForceGraphMethods<GraphNode, GraphLink>;
@@ -18,6 +18,7 @@ type Props = {
   connectArmed: boolean;
   placeArmed: boolean;
   placeFrom: string | null;
+  placeSize?: number;
   linkArrows: ArrowStyle;
   search: string;
   levels: number[];
@@ -140,6 +141,7 @@ export default function GraphCanvas({
   connectArmed,
   placeArmed,
   placeFrom,
+  placeSize,
   linkArrows,
   search,
   levels,
@@ -180,13 +182,11 @@ export default function GraphCanvas({
     | null
   >(null);
   const [gesture, setGesture] = useState<"marquee" | "group" | "pan" | null>(null);
-  const hidden = useMemo(() => hiddenByCollapse(nodes), [nodes]);
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const palette = graphTheme(theme);
 
   const graphData = useMemo(() => {
     const visible = nodes.filter((n) => {
-      if (hidden.has(n.id)) return false;
       if (hideFiltered && !isFiltered(n, search, levels, types, colors, settings.colorBy)) return false;
       return true;
     });
@@ -199,7 +199,7 @@ export default function GraphCanvas({
         return [{ id: l.id, source: e.source, target: e.target, kind: l.kind, arrows: l.arrows ?? "none" }];
       }),
     };
-  }, [nodes, links, hidden, hideFiltered, search, levels, types, colors, settings.colorBy]);
+  }, [nodes, links, hideFiltered, search, levels, types, colors, settings.colorBy]);
 
   useEffect(() => {
     if (!placeArmed) return;
@@ -804,35 +804,6 @@ export default function GraphCanvas({
           }
         }
 
-        if (node.collapsed) {
-          const count = collapsedChildCount(nodes, node.id);
-          if (count) {
-            ctx.globalAlpha = alpha;
-            const bx = x + r + 2 / globalScale;
-            const by = y - r - 1 / globalScale;
-            ctx.beginPath();
-            ctx.arc(bx, by, 5.2 / globalScale, 0, Math.PI * 2);
-            ctx.fillStyle = palette.badge;
-            ctx.fill();
-            ctx.strokeStyle = color;
-            ctx.lineWidth = 1 / globalScale;
-            ctx.stroke();
-            ctx.fillStyle = palette.badgeText;
-            ctx.font = `700 ${(8 * enlarge) / globalScale}px "Segoe UI", sans-serif`;
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText(String(count), bx, by);
-          }
-        }
-
-        if (node.pinned) {
-          ctx.globalAlpha = alpha;
-          ctx.fillStyle = palette.pin;
-          ctx.beginPath();
-          ctx.arc(x + r * 0.55, y - r * 0.55, 1.7 / globalScale, 0, Math.PI * 2);
-          ctx.fill();
-        }
-
         ctx.restore();
       }}
       onRenderFramePost={(ctx, globalScale) => {
@@ -866,8 +837,11 @@ export default function GraphCanvas({
         const cur = cursorGraph.current;
         if (!cur) return;
         if (placeArmed) {
-          const r = 5.2 / Math.max(globalScale, 0.35);
           const src = placeFrom ? graphData.nodes.find((n) => n.id === placeFrom) : null;
+          const ghostLevel = src ? src.level + 1 : 2;
+          const ghostSize = placeSize ?? sizeForLevel(ghostLevel);
+          const enlarge = Number.isFinite(settings.enlarge) ? settings.enlarge : 1;
+          const r = dotRadius({ size: ghostSize, level: ghostLevel } as GraphNode, globalScale, enlarge);
           ctx.save();
           if (src && src.x != null && src.y != null) {
             ctx.strokeStyle = palette.linkHot;
@@ -896,7 +870,7 @@ export default function GraphCanvas({
           ctx.font = `600 ${11 / globalScale}px "Segoe UI", sans-serif`;
           ctx.textAlign = "center";
           ctx.textBaseline = "top";
-          ctx.fillText(placeFrom ? "New child" : "New idea", cur.x, cur.y + r + 4 / globalScale);
+          ctx.fillText("New idea", cur.x, cur.y + r + 4 / globalScale);
           ctx.restore();
           return;
         }

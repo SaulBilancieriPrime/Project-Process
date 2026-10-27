@@ -34,13 +34,9 @@ export function normalizeNode(raw: Partial<GraphNode>, index = 0): GraphNode {
     type: raw.type === "category" || raw.type === "task" || raw.type === "info" ? raw.type : "concept",
     color: raw.color,
     employee: typeof raw.employee === "string" ? raw.employee : "",
-    size: Number.isFinite(raw.size) ? Math.min(2.6, Math.max(0.5, Number(raw.size))) : 1,
-    pinned: Boolean(raw.pinned),
-    collapsed: Boolean(raw.collapsed),
+    size: Number.isFinite(raw.size) ? Math.min(6.5, Math.max(0.5, Number(raw.size))) : 1,
     x: typeof raw.x === "number" ? raw.x : undefined,
     y: typeof raw.y === "number" ? raw.y : undefined,
-    fx: raw.pinned && typeof raw.fx === "number" ? raw.fx : raw.pinned && typeof raw.x === "number" ? raw.x : undefined,
-    fy: raw.pinned && typeof raw.fy === "number" ? raw.fy : raw.pinned && typeof raw.y === "number" ? raw.y : undefined,
   };
 }
 

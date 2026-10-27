@@ -18,7 +18,8 @@ import {
   mergeAction,
   type HistoryAction,
 } from "./graph/history";
-import { addChild, addLink, blankNode, deleteNode, insertNodeBetween, setPinned } from "./graph/ops";
+import { nodeColor } from "./graph/colors";
+import { addChild, addLink, blankNode, deleteNode, insertNodeBetween } from "./graph/ops";
 import { linkEnds } from "./graph/visibility";
 import { createSampleDocument } from "./sampleData";
 import {
@@ -39,7 +40,7 @@ type MenuState =
   | { kind: "canvas"; x: number; y: number };
 
 type PickState = { kind: "node" | "link"; id: string };
-type PlaceState = { parentId?: string };
+type PlaceState = { parentId?: string; size?: number };
 type PendingEdit = { kind: "node"; id: string } | { kind: "link"; id: string };
 
 export default function App() {
@@ -246,11 +247,11 @@ export default function App() {
     }
   }
 
-  function applyLivePins(physicsOn: boolean) {
+  function applyPhysicsFreeze(physicsOn: boolean) {
     const live = liveGraphNodes();
-    const pin = (n: GraphNode) => {
+    const freeze = (n: GraphNode) => {
       try {
-        if (!physicsOn || n.pinned) {
+        if (!physicsOn) {
           if (typeof n.x === "number") n.fx = n.x;
           if (typeof n.y === "number") n.fy = n.y;
         } else {
@@ -263,12 +264,12 @@ export default function App() {
         /* engine node objects can reject some writes */
       }
     };
-    live.forEach(pin);
+    live.forEach(freeze);
     nodes.forEach((n) => {
       const match = live.find((item) => item.id === n.id);
       if (match && typeof match.x === "number") n.x = match.x;
       if (match && typeof match.y === "number") n.y = match.y;
-      pin(n);
+      freeze(n);
     });
   }
 
@@ -348,7 +349,7 @@ export default function App() {
 
   useEffect(() => {
     try {
-      applyLivePins(settings.physics);
+      applyPhysicsFreeze(settings.physics);
       if (settings.physics) graphRef.current?.d3ReheatSimulation();
     } catch {
       /* engine may be mid-tick */
@@ -360,13 +361,7 @@ export default function App() {
     const name = current?.title.trim() || "node";
     let label = `Edited ${name}`;
     let coalesceKey = `node:${id}:edit`;
-    if (patch.pinned !== undefined && Object.keys(patch).length === 1) {
-      label = patch.pinned ? `Pinned ${name}` : `Unpinned ${name}`;
-      coalesceKey = `node:${id}:pin`;
-    } else if (patch.collapsed !== undefined && Object.keys(patch).length === 1) {
-      label = patch.collapsed ? `Collapsed ${name}` : `Expanded ${name}`;
-      coalesceKey = `node:${id}:collapse`;
-    } else if (patch.color && Object.keys(patch).length === 1) {
+    if (patch.color && Object.keys(patch).length === 1) {
       label = `Recolored ${name}`;
     } else if (patch.size !== undefined && Object.keys(patch).length === 1) {
       label = `Resized ${name}`;
@@ -379,14 +374,6 @@ export default function App() {
     const live = liveGraphNodes().find((n) => n.id === id);
     if (!live) return;
     Object.assign(live, patch);
-    if (patch.pinned === true || (!settings.physics && patch.pinned !== false)) {
-      live.fx = live.x;
-      live.fy = live.y;
-    }
-    if (patch.pinned === false && settings.physics) {
-      live.fx = undefined;
-      live.fy = undefined;
-    }
   }
 
   function requestSave() {
@@ -413,8 +400,11 @@ export default function App() {
       ? (liveNode(parentId) ?? nodes.find((n) => n.id === parentId)) ?? null
       : null;
     if (parent) {
-      const next = addChild(nodes, links, parent, at);
-      applyGraph(`Added child under ${parent.title || "node"}`, { nodes: next.nodes, links: next.links });
+      const next = addChild(nodes, links, parent, at, placing?.size);
+      const placed = settings.physics
+        ? next.nodes
+        : next.nodes.map((n) => (n.id === next.id ? { ...n, fx: at.x, fy: at.y } : n));
+      applyGraph(`Added node under ${parent.title || "node"}`, { nodes: placed, links: next.links });
       setSelectedIds([next.id]);
       setPicked({ kind: "node", id: next.id });
       setPlacing(null);
@@ -425,9 +415,11 @@ export default function App() {
       title: "New idea",
       level: 2,
       type: "concept",
+      size: placing?.size,
       x: at.x,
       y: at.y,
-      pinned: true,
+      fx: settings.physics ? undefined : at.x,
+      fy: settings.physics ? undefined : at.y,
     });
     applyGraph(`Added ${created.title}`, { nodes: [...nodes, created] });
     setSelectedIds([created.id]);
@@ -436,13 +428,13 @@ export default function App() {
     if (edit) setEditingId(created.id);
   }
 
-  function startPlace(parentId?: string) {
+  function startPlace(parentId?: string, size?: number) {
     if (editLocked) return;
     setConnect(null);
     setMenu(null);
     setEditingId(null);
     setEditingLinkId(null);
-    setPlacing({ parentId });
+    setPlacing({ parentId, size });
     if (parentId) {
       setSelectedIds([parentId]);
       setPicked({ kind: "node", id: parentId });
@@ -497,7 +489,10 @@ export default function App() {
   function insertNodeOnLink(linkId: string) {
     const next = insertNodeBetween(nodes, links, linkId);
     if (!next) return;
-    applyGraph("Inserted node on connection", { nodes: next.nodes, links: next.links });
+    const placed = settings.physics
+      ? next.nodes
+      : next.nodes.map((n) => (n.id === next.id ? { ...n, fx: n.x, fy: n.y } : n));
+    applyGraph("Inserted node on connection", { nodes: placed, links: next.links });
     setSelectedIds([next.id]);
     setPicked({ kind: "node", id: next.id });
     setEditingId(next.id);
@@ -605,7 +600,7 @@ export default function App() {
     applyGraph("Reorganized layout", { settings: { ...settings, physics: true } }, "settings");
     window.setTimeout(() => {
       try {
-        applyLivePins(true);
+        applyPhysicsFreeze(true);
       } catch {
         /* ignore */
       }
@@ -736,6 +731,7 @@ export default function App() {
             connectArmed={Boolean(connect)}
             placeArmed={Boolean(placing)}
             placeFrom={placing?.parentId ?? null}
+            placeSize={placing?.size}
             linkArrows={connect?.arrows ?? "none"}
             search={search}
             levels={levels}
@@ -768,7 +764,7 @@ export default function App() {
                 if (model) {
                   model.x = pos.x;
                   model.y = pos.y;
-                  if (model.pinned || !settings.physics) {
+                  if (!settings.physics) {
                     model.fx = pos.x;
                     model.fy = pos.y;
                   }
@@ -776,7 +772,7 @@ export default function App() {
                 if (item) {
                   item.x = pos.x;
                   item.y = pos.y;
-                  if (model?.pinned || !settings.physics) {
+                  if (!settings.physics) {
                     item.fx = pos.x;
                     item.fy = pos.y;
                   } else {
@@ -818,7 +814,7 @@ export default function App() {
               if (model) {
                 model.x = x;
                 model.y = y;
-                if (model.pinned || !settings.physics) {
+                if (!settings.physics) {
                   model.fx = x;
                   model.fy = y;
                 }
@@ -826,7 +822,7 @@ export default function App() {
               if (live) {
                 live.x = x;
                 live.y = y;
-                if (model?.pinned || !settings.physics) {
+                if (!settings.physics) {
                   live.fx = x;
                   live.fy = y;
                 } else {
@@ -869,9 +865,7 @@ export default function App() {
         {(placing || connect || selectedIds.length > 1) && (
           <div className="absolute top-3 left-1/2 z-[8] -translate-x-1/2 rounded-full bg-[rgba(27,58,107,0.92)] px-3 py-1.5 text-xs font-bold tracking-wide text-[#f3f2f1]">
             {placing
-              ? placing.parentId
-                ? "Click to place a child · Esc to cancel"
-                : "Click to place a node · Esc to cancel"
+              ? "Click to place a node · Esc to cancel"
               : connect?.from
                 ? "Click the next node · Esc to cancel"
                 : connect
@@ -901,10 +895,10 @@ export default function App() {
           onReorg={reheat}
           onPhysics={() => {
             const next = !settings.physics;
-            applyLivePins(next);
+            applyPhysicsFreeze(next);
             applyGraph(next ? "Turned physics on" : "Turned physics off", { settings: { ...settings, physics: next } });
             window.setTimeout(() => {
-              applyLivePins(next);
+              applyPhysicsFreeze(next);
               if (next) graphRef.current?.d3ReheatSimulation();
             }, 40);
           }}
@@ -960,19 +954,11 @@ export default function App() {
         if (!ctxNode) return null;
         return (
           <NodeContextMenu
-            node={ctxNode}
             x={menu.x}
             y={menu.y}
-            onAddChild={() => startPlace(menu.id)}
+            accent={nodeColor(ctxNode, settings.colorBy)}
+            onAddNode={(size) => startPlace(menu.id, size)}
             onLink={(arrows) => startLink(arrows, menu.id)}
-            onTogglePin={() => {
-              updateNode(menu.id, setPinned(ctxNode, !ctxNode.pinned));
-              setMenu(null);
-            }}
-            onToggleCollapse={() => {
-              updateNode(menu.id, { collapsed: !ctxNode.collapsed });
-              setMenu(null);
-            }}
             onDelete={() => removeNode(menu.id, false)}
             onDeleteBranch={() => removeNode(menu.id, true)}
           />
