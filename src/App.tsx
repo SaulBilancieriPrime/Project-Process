@@ -8,7 +8,7 @@ import InfoPanel from "./components/InfoPanel";
 import NodeContextMenu from "./components/NodeContextMenu";
 import Sidebar from "./components/Sidebar";
 import { LEVEL_COLORS, nodeColor } from "./graph/colors";
-import { addChild, addLink, blankNode, deleteNode, KIND_LABEL, setPinned } from "./graph/ops";
+import { addChild, addLink, blankNode, deleteNode, insertNodeBetween, KIND_LABEL, setPinned } from "./graph/ops";
 import { linkEnds } from "./graph/visibility";
 import { createSampleDocument } from "./sampleData";
 import {
@@ -264,6 +264,19 @@ export default function App() {
     if (editingLinkId === id) setEditingLinkId(null);
     if (picked?.kind === "link" && picked.id === id) setPicked(null);
     setMenu(null);
+  }
+
+  function insertNodeOnLink(linkId: string) {
+    const next = insertNodeBetween(nodes, links, linkId);
+    if (!next) return;
+    setNodes(next.nodes);
+    setLinks(next.links);
+    setSelectedIds([next.id]);
+    setPicked({ kind: "node", id: next.id });
+    setEditingId(next.id);
+    setEditingLinkId(null);
+    setMenu(null);
+    showToast("Inserted node on connection");
   }
 
   function updateLink(id: string, patch: Partial<GraphLink>) {
@@ -712,6 +725,10 @@ export default function App() {
 
       {menu?.kind === "link" && (
         <div className="ctx" style={{ left: menu.x, top: menu.y }}>
+          <button type="button" onClick={() => insertNodeOnLink(menu.id)}>
+            Insert node here
+          </button>
+          <div className="sep" />
           <button
             type="button"
             className="danger"

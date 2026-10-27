@@ -1,6 +1,6 @@
 import type { ColorBy, GraphNode, NodeKind } from "../types";
 
-export const LEVEL_COLORS = ["#e67e22", "#5b9bd5", "#8b5cf6", "#34d399", "#f59e0b", "#f43f5e", "#38bdf8"];
+export const LEVEL_COLORS = ["#e67e22", "#5b9bd5", "#8b5cf6", "#34d399", "#f59e0b", "#f43f5e", "#38bdf8", "#64748b"];
 
 export const TYPE_COLORS: Record<NodeKind, string> = {
   concept: "#7dd3fc",
