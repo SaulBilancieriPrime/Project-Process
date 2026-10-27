@@ -9,6 +9,7 @@ import { LEVEL_COLORS, nodeColor } from "../graph/colors";
 import { KIND_LABEL } from "../graph/ops";
 import { cx, dangerText, editFloat, field, fieldArea, fieldLabel, ghostBtn, primaryBtn, swatch, swatchOn } from "../styles";
 import type { ColorBy, GraphNode, NodeKind } from "../types";
+import EmployeePicker from "./EmployeePicker";
 import SizePresetPicker from "./SizePresetPicker";
 
 type Draft = {
@@ -18,6 +19,7 @@ type Draft = {
   size: number;
   color?: string;
   employee: string;
+  employeeEmail: string;
 };
 
 function toDraft(node: GraphNode): Draft {
@@ -28,6 +30,7 @@ function toDraft(node: GraphNode): Draft {
     size: node.size,
     color: node.color,
     employee: node.employee ?? "",
+    employeeEmail: node.employeeEmail ?? "",
   };
 }
 
@@ -38,7 +41,8 @@ function isDirty(node: GraphNode, draft: Draft) {
     draft.type !== node.type ||
     Math.abs(draft.size - node.size) > 0.001 ||
     (draft.color ?? "") !== (node.color ?? "") ||
-    draft.employee !== (node.employee ?? "")
+    draft.employee !== (node.employee ?? "") ||
+    draft.employeeEmail !== (node.employeeEmail ?? "")
   );
 }
 
@@ -138,11 +142,10 @@ export default function EditNodePanel({
         onChange={(e) => patch({ description: e.target.value })}
       />
       <label className={fieldLabel}>Assigned employee</label>
-      <input
-        className={field}
-        value={draft.employee}
-        placeholder="Name"
-        onChange={(e) => patch({ employee: e.target.value })}
+      <EmployeePicker
+        name={draft.employee}
+        email={draft.employeeEmail}
+        onChange={(next) => patch({ employee: next.name, employeeEmail: next.email })}
       />
       <label className={fieldLabel}>Type</label>
       <select

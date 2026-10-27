@@ -1,0 +1,132 @@
+openapi: 3.0.3
+info:
+  title: Project Process API
+  version: 0.1.0
+  description: >
+    Backend for Project Process. Connects to the same Azure SQL Server as
+    PM_MANUAL (`sql-prime-it.database.windows.net` / `atg-requirements`)
+    and reads Entra users from `entra.Employee` for node assignment.
+servers:
+  - url: http://127.0.0.1:5174
+    description: Local Flask API
+paths:
+  /api/health:
+    get:
+      summary: Check Azure SQL connectivity
+      operationId: getHealth
+      responses:
+        "200":
+          description: SQL is reachable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+              example:
+                ok: true
+                sql: true
+                server: sql-prime-it.database.windows.net
+                database: atg-requirements
+                azure: false
+        "503":
+          description: SQL is unreachable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+  /api/employees:
+    get:
+      summary: Search enabled Entra employees
+      operationId: searchEmployees
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: Display name, given name, surname, mail, or UPN. Empty returns the first page.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        "200":
+          description: Matching employees
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmployeeList"
+              example:
+                ok: true
+                employees:
+                  - id: "00000000-0000-0000-0000-000000000000"
+                    name: Jane Doe
+                    email: jane.doe@primeeng.com
+                    upn: jane.doe@primeeng.com
+                    enabled: true
+        "400":
+          description: Invalid limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: SQL lookup failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  schemas:
+    Health:
+      type: object
+      required: [ok, sql, server, database, azure]
+      properties:
+        ok:
+          type: boolean
+        sql:
+          type: boolean
+        server:
+          type: string
+        database:
+          type: string
+        azure:
+          type: boolean
+        error:
+          type: string
+    Employee:
+      type: object
+      required: [id, name, email, upn, enabled]
+      properties:
+        id:
+          type: string
+          description: Entra objectId
+        name:
+          type: string
+        email:
+          type: string
+        upn:
+          type: string
+        enabled:
+          type: boolean
+    EmployeeList:
+      type: object
+      required: [ok, employees]
+      properties:
+        ok:
+          type: boolean
+        employees:
+          type: array
+          items:
+            $ref: "#/components/schemas/Employee"
+    Error:
+      type: object
+      required: [ok, error]
+      properties:
+        ok:
+          type: boolean
+        error:
+          type: string

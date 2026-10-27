@@ -14,6 +14,7 @@ export function blankNode(partial: Partial<GraphNode> & { title?: string }): Gra
     type: partial.type ?? "concept",
     color: partial.color,
     employee: partial.employee ?? "",
+    employeeEmail: partial.employeeEmail ?? "",
     size: partial.size ?? sizeForLevel(level),
     x: partial.x,
     y: partial.y,

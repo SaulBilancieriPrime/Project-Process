@@ -97,8 +97,10 @@ export function diffSnapshots(saved: GraphSnapshot, current: GraphSnapshot): Cha
     if (prev.description !== node.description) details.push("Description updated");
     if (prev.type !== node.type) details.push(fieldChange("Type", KIND_LABEL[prev.type], KIND_LABEL[node.type]));
     if (prev.level !== node.level) details.push(fieldChange("Level", `L${prev.level}`, `L${node.level}`));
-    if ((prev.color ?? "") !== (node.color ?? "")) details.push("Color changed");
-    if ((prev.employee ?? "") !== (node.employee ?? "")) details.push("Employee changed");
+    if ((prev.color ?? "") !== (node.color ?? "")) details.push("Status changed");
+    if ((prev.employee ?? "") !== (node.employee ?? "") || (prev.employeeEmail ?? "") !== (node.employeeEmail ?? "")) {
+      details.push("Employee changed");
+    }
     if (Math.abs((prev.size ?? 1) - (node.size ?? 1)) > 0.04) details.push("Size changed");
     if (details.length) {
       changes.push({

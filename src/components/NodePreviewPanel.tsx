@@ -31,13 +31,13 @@ export default function NodePreviewPanel({ node, colorBy, style }: Props) {
       </h3>
       <div className="flex items-end justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <span className={previewLabel}>Color</span>
+          <span className={previewLabel}>Status</span>
           <div className="flex min-h-6 items-center">
             <span
               className="edit-size-node pointer-events-none block rounded-full bg-[var(--edit-accent,var(--accent))]"
               style={{ width: COLOR_SWATCH_PX, height: COLOR_SWATCH_PX }}
               title={accent}
-              aria-label="Node color"
+              aria-label="Node status"
             />
           </div>
         </div>

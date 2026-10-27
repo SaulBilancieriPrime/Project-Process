@@ -12,6 +12,7 @@ export interface GraphNode {
   type: NodeKind;
   color?: string;
   employee?: string;
+  employeeEmail?: string;
   size: number;
   x?: number;
   y?: number;

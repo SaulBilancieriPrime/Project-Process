@@ -69,12 +69,13 @@ export default function HelpTab() {
         <ul className="mb-2.5 ml-0 list-disc pl-4 text-xs leading-normal text-[var(--muted)] [&_li]:mb-1.5 [&_strong]:text-[var(--text)]">
           <li>
             <strong>Click a node</strong> — select it, open a preview of title,
-            color, and assigned employee, and dock the edit form in the bottom
+            status, and assigned Entra employee, and dock the edit form in the bottom
             left. Shift-click adds or removes from the selection.
           </li>
           <li>
             <strong>Edit form</strong> — changes stay in the form until Save.
-            Size and color preview on the node immediately.
+            Size and status preview on the node immediately. Search Entra
+            users to assign or change the employee.
           </li>
           <li>
             <strong>Close / Save</strong> — Close if nothing changed; Save
@@ -269,11 +270,11 @@ export default function HelpTab() {
         <h2>Search and filters</h2>
         <p>
           The panel at the top left searches titles and descriptions, then
-          narrows by color. None selected means no color constraint.
+          narrows by status. None selected means no status constraint.
         </p>
         <ul className="mb-2.5 ml-0 list-disc pl-4 text-xs leading-normal text-[var(--muted)] [&_li]:mb-1.5 [&_strong]:text-[var(--text)]">
           <li>
-            Click a color swatch to toggle. Click a search hit to focus that
+            Click a status swatch to toggle. Click a search hit to focus that
             node.
           </li>
           <li>

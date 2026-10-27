@@ -138,7 +138,7 @@ export default function FilterPanel({
         onToggle={() => toggleSection("filters")}
         className="mt-3"
       >
-        <div className="text-[10px] font-bold tracking-wider text-[var(--muted)] uppercase">Color</div>
+        <div className="text-[10px] font-bold tracking-wider text-[var(--muted)] uppercase">Status</div>
         <div className="mt-1.5 flex flex-wrap gap-1.5">
           {LEVEL_COLORS.map((c) => (
             <button
@@ -146,8 +146,8 @@ export default function FilterPanel({
               type="button"
               className={cx(swatch, colors.includes(c) && swatchOn)}
               style={{ background: c }}
-              title="Filter by this color"
-              aria-label="Filter by color"
+              title="Filter by this status"
+              aria-label="Filter by status"
               aria-pressed={colors.includes(c)}
               onClick={() => onColors(toggleColor(colors, c))}
             />

@@ -368,12 +368,12 @@ export default function App() {
     let label = `Edited ${name}`;
     let coalesceKey = `node:${id}:edit`;
     if (patch.color && Object.keys(patch).length === 1) {
-      label = `Recolored ${name}`;
+      label = `Changed status of ${name}`;
     } else if (patch.size !== undefined && Object.keys(patch).length === 1) {
       label = `Resized ${name}`;
     } else if (patch.type && Object.keys(patch).length === 1) {
       label = `Changed type of ${name}`;
-    } else if (patch.employee !== undefined && Object.keys(patch).length === 1) {
+    } else if (patch.employee !== undefined && Object.keys(patch).length <= 2) {
       label = `Assigned ${name}`;
     }
     applyGraph(label, { nodes: nodes.map((n) => (n.id === id ? { ...n, ...patch } : n)) }, coalesceKey);

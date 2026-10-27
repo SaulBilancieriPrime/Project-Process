@@ -34,6 +34,7 @@ export function normalizeNode(raw: Partial<GraphNode>, index = 0): GraphNode {
     type: raw.type === "category" || raw.type === "task" || raw.type === "info" ? raw.type : "concept",
     color: raw.color,
     employee: typeof raw.employee === "string" ? raw.employee : "",
+    employeeEmail: typeof raw.employeeEmail === "string" ? raw.employeeEmail : "",
     size: Number.isFinite(raw.size) ? Math.min(6.5, Math.max(0.5, Number(raw.size))) : 1,
     x: typeof raw.x === "number" ? raw.x : undefined,
     y: typeof raw.y === "number" ? raw.y : undefined,
