@@ -268,18 +268,67 @@ export default function GraphCanvas({
     const g = graphAtClient(clientX, clientY);
     const k = zoomK();
     const enlarge = Number.isFinite(settings.enlarge) ? settings.enlarge : 1;
+    const cards = cardsAtZoom(Boolean(settings.cardInfo), k);
     let best: GraphNode | null = null;
     let bestD = Infinity;
     for (const n of liveEngineNodes()) {
       if (n.x == null || n.y == null) continue;
-      const r = dotRadius(n, k, enlarge) + 8 / k;
+      const r = dotRadius(n, k, enlarge) + 10 / k;
       const d = Math.hypot(n.x - g.x, n.y - g.y);
       if (d <= r && d < bestD) {
         best = n;
         bestD = d;
       }
+      if (cards) {
+        const box = cardBox(n, k, enlarge);
+        const rx = n.x - box.w / 2;
+        const ry = n.y + r - 10 / k + 6 / k;
+        if (g.x >= rx && g.x <= rx + box.w && g.y >= ry && g.y <= ry + box.h && d < bestD + box.w) {
+          best = n;
+          bestD = Math.min(bestD, d);
+        }
+      }
     }
     return best;
+  }
+
+  function isDouble(key: string) {
+    const now = Date.now();
+    const hit = Boolean(lastClick.current && lastClick.current.key === key && now - lastClick.current.t < 500);
+    lastClick.current = { key, t: now };
+    return hit;
+  }
+
+  function handleGraphClick(clientX: number, clientY: number, additive: boolean, forceDbl = false) {
+    if (placeArmed) return false;
+    const node = nodeAt(clientX, clientY);
+    if (node) {
+      skipBg.current = true;
+      if (connectArmed) {
+        onConnectTarget(node.id);
+        return true;
+      }
+      if (forceDbl || isDouble(node.id)) {
+        lastClick.current = null;
+        onEdit(node.id);
+        return true;
+      }
+      onSelect(node.id, additive);
+      return true;
+    }
+    if (connectArmed) return false;
+    const linkId = linkAtId(clientX, clientY);
+    if (linkId) {
+      skipBg.current = true;
+      if (forceDbl || isDouble(`link:${linkId}`)) {
+        lastClick.current = null;
+        onEditLink(linkId);
+        return true;
+      }
+      onSelectLink(linkId);
+      return true;
+    }
+    return false;
   }
 
   function linkAtId(clientX: number, clientY: number) {
@@ -400,6 +449,10 @@ export default function GraphCanvas({
         }
         onBackgroundMenu(e.clientX, e.clientY);
       }}
+      onDoubleClick={(e) => {
+        if (e.button !== 0) return;
+        handleGraphClick(e.clientX, e.clientY, e.shiftKey, true);
+      }}
       onPointerDown={(e) => {
         if (placeArmed || connectArmed) return;
         if (e.button === 1) {
@@ -466,11 +519,11 @@ export default function GraphCanvas({
         if (it.type === "marquee") {
           const k = zoomK();
           if (Math.abs(it.x1 - it.x0) * k < 6 && Math.abs(it.y1 - it.y0) * k < 6) {
+            if (skipBg.current) return;
             skipBg.current = true;
+            if (handleGraphClick(e.clientX, e.clientY, it.additive)) return;
             const g = graphAtClient(e.clientX, e.clientY);
-            const now = Date.now();
-            const dbl = Boolean(lastClick.current && lastClick.current.key === "__bg__" && now - lastClick.current.t < 340);
-            lastClick.current = { key: "__bg__", t: now };
+            const dbl = isDouble("__bg__");
             onBackground(e.clientX, e.clientY, g, dbl);
             return;
           }
@@ -534,18 +587,17 @@ export default function GraphCanvas({
         onDragEnd(n.id, n.x ?? 0, n.y ?? 0);
       }}
       onNodeClick={(n, ev) => {
+        skipBg.current = true;
         if (placeArmed) return;
         if (connectArmed) {
           onConnectTarget(n.id);
           return;
         }
-        const now = Date.now();
-        if (lastClick.current && lastClick.current.key === n.id && now - lastClick.current.t < 340) {
-          onEdit(n.id);
+        if (ev.detail === 2 || isDouble(n.id)) {
           lastClick.current = null;
+          onEdit(n.id);
           return;
         }
-        lastClick.current = { key: n.id, t: now };
         onSelect(n.id, ev.shiftKey);
       }}
       onNodeRightClick={(n, ev) => {
@@ -558,16 +610,14 @@ export default function GraphCanvas({
         fgContextHandled.current = true;
         onLinkMenu(l.id, ev.clientX, ev.clientY);
       }}
-      onLinkClick={(l) => {
-        if (placeArmed) return;
-        if (connectArmed) return;
-        const now = Date.now();
-        if (lastClick.current && lastClick.current.key === `link:${l.id}` && now - lastClick.current.t < 340) {
-          onEditLink(l.id);
+      onLinkClick={(l, ev) => {
+        skipBg.current = true;
+        if (placeArmed || connectArmed) return;
+        if (ev.detail === 2 || isDouble(`link:${l.id}`)) {
           lastClick.current = null;
+          onEditLink(l.id);
           return;
         }
-        lastClick.current = { key: `link:${l.id}`, t: now };
         onSelectLink(l.id);
       }}
       linkHoverPrecision={10}
@@ -578,10 +628,9 @@ export default function GraphCanvas({
           skipBg.current = false;
           return;
         }
+        if (handleGraphClick(ev.clientX, ev.clientY, ev.shiftKey, ev.detail === 2)) return;
         const g = graphAtClient(ev.clientX, ev.clientY);
-        const now = Date.now();
-        const dbl = Boolean(lastClick.current && lastClick.current.key === "__bg__" && now - lastClick.current.t < 340);
-        lastClick.current = { key: "__bg__", t: now };
+        const dbl = isDouble("__bg__");
         onBackground(ev.clientX, ev.clientY, g, dbl);
       }}
       linkColor={(l) => {

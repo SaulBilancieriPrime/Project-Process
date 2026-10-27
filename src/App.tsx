@@ -1,14 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import CanvasTools from "./components/CanvasTools";
+import EditLinkPanel from "./components/EditLinkPanel";
+import EditNodePanel from "./components/EditNodePanel";
 import PlusMenu from "./components/PlusMenu";
 import PlusMenuButton from "./components/PlusMenuButton";
 import GraphCanvas, { type GraphHandle } from "./components/GraphCanvas";
 import Header from "./components/Header";
-import InfoPanel from "./components/InfoPanel";
 import NodeContextMenu from "./components/NodeContextMenu";
-import Sidebar from "./components/Sidebar";
-import { LEVEL_COLORS, nodeColor } from "./graph/colors";
-import { addChild, addLink, blankNode, deleteNode, insertNodeBetween, KIND_LABEL, setPinned } from "./graph/ops";
+import SaveConfirmModal from "./components/SaveConfirmModal";
+import Sidebar, { type SidebarTab } from "./components/Sidebar";
+import {
+  ACTION_COALESCE_MS,
+  actionKindFromChanges,
+  cloneSnapshot,
+  diffSnapshots,
+  mergeAction,
+  type HistoryAction,
+} from "./graph/history";
+import { addChild, addLink, blankNode, deleteNode, insertNodeBetween, setPinned } from "./graph/ops";
 import { linkEnds } from "./graph/visibility";
 import { createSampleDocument } from "./sampleData";
 import {
@@ -16,6 +25,7 @@ import {
   loadDocument,
   loadTheme,
   readJsonFile,
+  newId,
   saveDocument,
   saveTheme,
 } from "./storage";
@@ -44,7 +54,8 @@ export default function App() {
   const [plusOpen, setPlusOpen] = useState(false);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [infoOpen, setInfoOpen] = useState(false);
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>("filter");
+  const [saveOpen, setSaveOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [levels, setLevels] = useState<number[]>([]);
   const [types, setTypes] = useState<NodeKind[]>([]);
@@ -60,6 +71,9 @@ export default function App() {
   const importRef = useRef<HTMLInputElement>(null);
   const persistTimer = useRef<number | null>(null);
   const fittedOnce = useRef(false);
+  const editSaveRef = useRef<(() => void) | null>(null);
+  const [actions, setActions] = useState<HistoryAction[]>([]);
+  const [editLocked, setEditLocked] = useState(false);
 
   const editing = nodes.find((n) => n.id === editingId) ?? null;
   const editingLink = links.find((l) => l.id === editingLinkId) ?? null;
@@ -81,11 +95,9 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    setDirty(true);
     if (persistTimer.current) window.clearTimeout(persistTimer.current);
     persistTimer.current = window.setTimeout(() => {
       saveDocument({ nodes, links, settings });
-      setDirty(false);
     }, 450);
     return () => {
       if (persistTimer.current) window.clearTimeout(persistTimer.current);
@@ -93,9 +105,44 @@ export default function App() {
   }, [nodes, links, settings]);
 
   useEffect(() => {
+    setDirty(actions.length > 0);
+  }, [actions.length]);
+
+  useEffect(() => {
+    if (!editing && !editingLink) setEditLocked(false);
+  }, [editing, editingLink]);
+
+  const dismissEditPanel = useCallback(() => {
+    setEditLocked(false);
+    setEditingId(null);
+    setEditingLinkId(null);
+  }, []);
+
+  useEffect(() => {
+    const editingOpen = editingId !== null || editingLinkId !== null;
+    if (!menu && !editingOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target;
+      if (!(target instanceof Element)) return;
+      if (menu && !target.closest(".ctx, .plus-menu-floating")) {
+        setMenu(null);
+      }
+      if (editingOpen && !editLocked && !target.closest(".edit-float")) {
+        dismissEditPanel();
+      }
+    };
+    const timer = window.setTimeout(() => window.addEventListener("pointerdown", onPointerDown, true), 0);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("pointerdown", onPointerDown, true);
+    };
+  }, [menu, editingId, editingLinkId, editLocked, dismissEditPanel]);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
       if (e.key === "Escape") {
+        if (editLocked) return;
         setMenu(null);
         setConnect(null);
         setPlacing(false);
@@ -104,14 +151,19 @@ export default function App() {
         setEditingLinkId(null);
         setPicked(null);
         setSelectedIds([]);
-        setInfoOpen(false);
+        setSaveOpen(false);
       }
       if (typing) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
-        saveNow();
+        if (editLocked) {
+          editSaveRef.current?.();
+          return;
+        }
+        requestSave();
       }
       if (e.key === "Delete") {
+        if (editingId || editingLinkId || editLocked) return;
         if (picked?.kind === "link") removeLink(picked.id);
         else if (selectedIds.length) removeNodes(selectedIds);
       }
@@ -130,6 +182,8 @@ export default function App() {
   }, []);
 
   function openContextMenu(next: MenuState) {
+    if (editLocked) return;
+    dismissEditPanel();
     setMenu(next);
     setPicked(null);
     setPlusOpen(false);
@@ -172,8 +226,78 @@ export default function App() {
     });
   }
 
+  function applyGraph(
+    label: string,
+    next: { nodes?: GraphNode[]; links?: GraphLink[]; settings?: GraphSettings },
+    coalesceKey?: string,
+  ) {
+    const afterNodes = next.nodes ?? nodes;
+    const afterLinks = next.links ?? links;
+    const afterSettings = next.settings ?? settings;
+    const before = cloneSnapshot(nodes, links, settings);
+    const after = cloneSnapshot(afterNodes, afterLinks, afterSettings);
+    const changes = diffSnapshots(before, after);
+    if (next.nodes) setNodes(afterNodes);
+    if (next.links) setLinks(afterLinks);
+    if (next.settings) setSettings(afterSettings);
+    if (!changes.length) return;
+    setActions((prev) => {
+      const last = prev[prev.length - 1];
+      if (
+        coalesceKey &&
+        last?.coalesceKey === coalesceKey &&
+        Date.now() - last.at < ACTION_COALESCE_MS
+      ) {
+        return [...prev.slice(0, -1), mergeAction(last, after, label)];
+      }
+      return [
+        ...prev,
+        {
+          id: newId(),
+          label,
+          kind: actionKindFromChanges(changes),
+          at: Date.now(),
+          coalesceKey,
+          before,
+          after,
+          changes,
+        },
+      ];
+    });
+  }
+
+  function undoAction(id: string) {
+    const idx = actions.findIndex((a) => a.id === id);
+    if (idx < 0) return;
+    const target = actions[idx];
+    setNodes(target.before.nodes);
+    setLinks(target.before.links);
+    setSettings(target.before.settings);
+    setActions((prev) => prev.slice(0, idx));
+    setEditingId((cur) => (cur && target.before.nodes.some((n) => n.id === cur) ? cur : null));
+    setEditingLinkId((cur) => (cur && target.before.links.some((l) => l.id === cur) ? cur : null));
+    setSelectedIds((prev) => prev.filter((item) => target.before.nodes.some((n) => n.id === item)));
+    setPicked((cur) => {
+      if (!cur) return null;
+      if (cur.kind === "node" && !target.before.nodes.some((n) => n.id === cur.id)) return null;
+      if (cur.kind === "link" && !target.before.links.some((l) => l.id === cur.id)) return null;
+      return cur;
+    });
+    setMenu(null);
+    const live = liveGraphNodes();
+    for (const n of live) {
+      const match = target.before.nodes.find((item) => item.id === n.id);
+      if (!match) continue;
+      n.x = match.x;
+      n.y = match.y;
+      n.fx = match.fx;
+      n.fy = match.fy;
+    }
+    showToast("Undid action");
+  }
+
   function patchSettings(patch: Partial<GraphSettings>) {
-    setSettings((prev) => ({ ...prev, ...patch }));
+    applyGraph("Changed settings", { settings: { ...settings, ...patch } }, "settings");
   }
 
   useEffect(() => {
@@ -186,7 +310,24 @@ export default function App() {
   }, [settings.physics]);
 
   function updateNode(id: string, patch: Partial<GraphNode>) {
-    setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, ...patch } : n)));
+    const current = nodes.find((n) => n.id === id);
+    const name = current?.title.trim() || "node";
+    let label = `Edited ${name}`;
+    let coalesceKey = `node:${id}:edit`;
+    if (patch.pinned !== undefined && Object.keys(patch).length === 1) {
+      label = patch.pinned ? `Pinned ${name}` : `Unpinned ${name}`;
+      coalesceKey = `node:${id}:pin`;
+    } else if (patch.collapsed !== undefined && Object.keys(patch).length === 1) {
+      label = patch.collapsed ? `Collapsed ${name}` : `Expanded ${name}`;
+      coalesceKey = `node:${id}:collapse`;
+    } else if (patch.color && Object.keys(patch).length === 1) {
+      label = `Recolored ${name}`;
+    } else if (patch.size !== undefined && Object.keys(patch).length === 1) {
+      label = `Resized ${name}`;
+    } else if (patch.type && Object.keys(patch).length === 1) {
+      label = `Changed type of ${name}`;
+    }
+    applyGraph(label, { nodes: nodes.map((n) => (n.id === id ? { ...n, ...patch } : n)) }, coalesceKey);
     const live = liveGraphNodes().find((n) => n.id === id);
     if (!live) return;
     Object.assign(live, patch);
@@ -200,13 +341,25 @@ export default function App() {
     }
   }
 
-  function saveNow() {
+  function requestSave() {
+    if (editLocked) {
+      editSaveRef.current?.();
+      return;
+    }
+    setSaveOpen(true);
+    setMenu(null);
+    setPlusOpen(false);
+  }
+
+  function commitSave() {
     saveDocument({ nodes, links, settings });
+    setActions([]);
+    setSaveOpen(false);
     setDirty(false);
     showToast("Saved locally");
   }
 
-  const addLooseNode = useCallback((at: { x: number; y: number }, edit = false) => {
+  function addLooseNode(at: { x: number; y: number }, edit = false) {
     const created = blankNode({
       title: "New idea",
       level: 2,
@@ -215,14 +368,15 @@ export default function App() {
       y: at.y,
       pinned: true,
     });
-    setNodes((prev) => [...prev, created]);
+    applyGraph(`Added ${created.title}`, { nodes: [...nodes, created] });
     setSelectedIds([created.id]);
     setPicked({ kind: "node", id: created.id });
     setPlacing(false);
     if (edit) setEditingId(created.id);
-  }, []);
+  }
 
   function startPlace() {
+    if (editLocked) return;
     setConnect(null);
     setMenu(null);
     setEditingId(null);
@@ -231,6 +385,7 @@ export default function App() {
   }
 
   function startLink(arrows: ArrowStyle, from?: string) {
+    if (editLocked) return;
     setPlacing(false);
     setMenu(null);
     setEditingId(null);
@@ -240,9 +395,12 @@ export default function App() {
   }
 
   function removeNode(id: string, branch: boolean) {
+    const current = nodes.find((n) => n.id === id);
     const next = deleteNode(nodes, links, id, branch);
-    setNodes(next.nodes);
-    setLinks(next.links);
+    applyGraph(
+      branch ? `Deleted branch of ${current?.title || "node"}` : `Deleted ${current?.title || "node"}`,
+      { nodes: next.nodes, links: next.links },
+    );
     setSelectedIds((prev) => prev.filter((item) => item !== id));
     if (editingId === id) setEditingId(null);
     if (picked?.id === id) setPicked(null);
@@ -257,8 +415,7 @@ export default function App() {
       nextNodes = next.nodes;
       nextLinks = next.links;
     }
-    setNodes(nextNodes);
-    setLinks(nextLinks);
+    applyGraph(`Deleted ${ids.length} nodes`, { nodes: nextNodes, links: nextLinks });
     setSelectedIds([]);
     setEditingId(null);
     setPicked(null);
@@ -266,7 +423,7 @@ export default function App() {
   }
 
   function removeLink(id: string) {
-    setLinks((prev) => prev.filter((l) => l.id !== id));
+    applyGraph("Deleted connection", { links: links.filter((l) => l.id !== id) });
     if (editingLinkId === id) setEditingLinkId(null);
     if (picked?.kind === "link" && picked.id === id) setPicked(null);
     setMenu(null);
@@ -275,8 +432,7 @@ export default function App() {
   function insertNodeOnLink(linkId: string) {
     const next = insertNodeBetween(nodes, links, linkId);
     if (!next) return;
-    setNodes(next.nodes);
-    setLinks(next.links);
+    applyGraph("Inserted node on connection", { nodes: next.nodes, links: next.links });
     setSelectedIds([next.id]);
     setPicked({ kind: "node", id: next.id });
     setEditingId(next.id);
@@ -286,10 +442,15 @@ export default function App() {
   }
 
   function updateLink(id: string, patch: Partial<GraphLink>) {
-    setLinks((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)));
+    applyGraph(
+      "Edited connection",
+      { links: links.map((l) => (l.id === id ? { ...l, ...patch } : l)) },
+      `link:${id}`,
+    );
   }
 
   function pickNode(id: string, additive = false) {
+    if (editLocked) return;
     setSelectedIds((prev) => {
       if (additive) return prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id];
       return [id];
@@ -298,16 +459,15 @@ export default function App() {
     setEditingLinkId(null);
     setMenu(null);
     setPlusOpen(false);
-    setInfoOpen(false);
   }
 
   function pickLink(id: string) {
+    if (editLocked) return;
     setSelectedIds([]);
     setPicked({ kind: "link", id });
     setEditingId(null);
     setMenu(null);
     setPlusOpen(false);
-    setInfoOpen(false);
   }
 
   function liveNode(id: string) {
@@ -332,7 +492,7 @@ export default function App() {
   }
 
   function reheat() {
-    setSettings((s) => ({ ...s, physics: true }));
+    applyGraph("Reorganized layout", { settings: { ...settings, physics: true } }, "settings");
     window.setTimeout(() => {
       try {
         applyLivePins(true);
@@ -358,6 +518,19 @@ export default function App() {
       top: Math.min(window.innerHeight - 280, Math.max(60, s.top - 20)),
     };
   }, [editing, size, zoom]);
+
+  const editLinkPos = useMemo(() => {
+    if (!editingLink) return { left: 80, top: 80 };
+    const e = linkEnds(editingLink);
+    const a = liveNode(e.source);
+    const b = liveNode(e.target);
+    if (!a || !b || a.x == null || a.y == null || b.x == null || b.y == null) return { left: 80, top: 80 };
+    const s = screenOf((a.x + b.x) / 2, (a.y + b.y) / 2);
+    return {
+      left: Math.min(window.innerWidth - 300, Math.max(12, s.left + 18)),
+      top: Math.min(window.innerHeight - 260, Math.max(60, s.top - 20)),
+    };
+  }, [editingLink, links, size, zoom]);
 
   const actionPos = useMemo(() => {
     if (selectedIds.length > 1) {
@@ -402,18 +575,23 @@ export default function App() {
         dirty={dirty}
         theme={theme}
         onTheme={setTheme}
-        onSave={saveNow}
+        onSave={requestSave}
         onExport={() => {
           downloadJson({ nodes, links, settings });
           showToast("Exported JSON");
         }}
         onImport={() => importRef.current?.click()}
-        onInfo={() => setInfoOpen((v) => !v)}
+        onInfo={() => {
+          setSidebarOpen(true);
+          setSidebarTab("help");
+        }}
         onReset={() => {
+          if (editLocked) return;
           const sample = createSampleDocument();
           setNodes(sample.nodes);
           setLinks(sample.links);
           setSettings(sample.settings);
+          setActions([]);
           setSelectedIds([]);
           setEditingId(null);
           setEditingLinkId(null);
@@ -458,6 +636,7 @@ export default function App() {
             height={size.h}
             graphRef={graphRef}
             onSelect={(id, additive) => {
+              if (editLocked) return;
               if (id) pickNode(id, additive);
               else {
                 setSelectedIds([]);
@@ -465,6 +644,7 @@ export default function App() {
               }
             }}
             onMarquee={(ids, additive) => {
+              if (editLocked) return;
               setSelectedIds((prev) => (additive ? Array.from(new Set([...prev, ...ids])) : ids));
               if (ids.length === 1) setPicked({ kind: "node", id: ids[0] });
               else setPicked(null);
@@ -501,11 +681,13 @@ export default function App() {
             onSelectLink={pickLink}
             onHover={setHoveredId}
             onEdit={(id) => {
+              if (editLocked) return;
               pickNode(id);
               setEditingId(id);
               setEditingLinkId(null);
             }}
             onEditLink={(id) => {
+              if (editLocked) return;
               pickLink(id);
               setEditingLinkId(id);
             }}
@@ -516,6 +698,7 @@ export default function App() {
             onLinkMenu={(id, x, y) => openContextMenu({ kind: "link", id, x, y })}
             onBackgroundMenu={(x, y) => openContextMenu({ kind: "canvas", x, y })}
             onBackground={(_x, _y, graph, dbl) => {
+              if (editLocked) return;
               if (placing) {
                 addLooseNode(graph);
                 return;
@@ -563,7 +746,7 @@ export default function App() {
                 setSelectedIds([id]);
                 return;
               }
-              setLinks((prev) => addLink(prev, from, id, "cross", connect.arrows));
+              applyGraph("Linked nodes", { links: addLink(links, from, id, "cross", connect.arrows) });
               setConnect(null);
               showToast("Linked");
             }}
@@ -578,7 +761,6 @@ export default function App() {
                 }
               }
               saveDocument({ nodes, links, settings });
-              setDirty(false);
               if (!fittedOnce.current) {
                 fittedOnce.current = true;
                 fitGraph();
@@ -621,14 +803,14 @@ export default function App() {
           onPhysics={() => {
             const next = !settings.physics;
             applyLivePins(next);
-            setSettings((s) => ({ ...s, physics: next }));
+            applyGraph(next ? "Turned physics on" : "Turned physics off", { settings: { ...settings, physics: next } });
             window.setTimeout(() => {
               applyLivePins(next);
               if (next) graphRef.current?.d3ReheatSimulation();
             }, 40);
           }}
-          onSave={saveNow}
-          onCardInfo={() => setSettings((s) => ({ ...s, cardInfo: !s.cardInfo }))}
+          onSave={requestSave}
+          onCardInfo={() => applyGraph(settings.cardInfo ? "Hid cards" : "Showed cards", { settings: { ...settings, cardInfo: !settings.cardInfo } })}
         />
 
         <button
@@ -636,11 +818,13 @@ export default function App() {
           className={`side-btn side-toggle${sidebarOpen ? " is-on" : ""}`}
           onClick={() => setSidebarOpen((v) => !v)}
         >
-          {sidebarOpen ? "Hide panel" : "Filters"}
+          {sidebarOpen ? "Hide panel" : "Panel"}
         </button>
 
         <Sidebar
           open={sidebarOpen}
+          tab={sidebarTab}
+          onTab={setSidebarTab}
           nodes={nodes}
           settings={settings}
           search={search}
@@ -649,6 +833,8 @@ export default function App() {
           colors={colors}
           hideFiltered={hideFiltered}
           selectedIds={selectedIds}
+          history={actions}
+          onUndo={undoAction}
           onSearch={setSearch}
           onLevels={setLevels}
           onTypes={setTypes}
@@ -670,17 +856,6 @@ export default function App() {
         </div>
       )}
 
-      {picked?.kind === "link" && !menu && !plusOpen && !editing && !editingLink && !connect && !placing && (
-        <div className="item-actions" style={actionPos}>
-          <button type="button" onClick={() => setEditingLinkId(picked.id)}>
-            Edit
-          </button>
-          <button type="button" className="danger" onClick={() => removeLink(picked.id)}>
-            Delete
-          </button>
-        </div>
-      )}
-
       {menu?.kind === "node" && (() => {
         const ctxNode = nodes.find((n) => n.id === menu.id);
         if (!ctxNode) return null;
@@ -693,8 +868,7 @@ export default function App() {
               const parent = liveNode(menu.id);
               if (!parent) return;
               const next = addChild(nodes, links, parent);
-              setNodes(next.nodes);
-              setLinks(next.links);
+              applyGraph(`Added child under ${parent.title || "node"}`, { nodes: next.nodes, links: next.links });
               setSelectedIds([next.id]);
               setEditingId(next.id);
               setMenu(null);
@@ -743,106 +917,64 @@ export default function App() {
         </div>
       )}
 
+      {editLocked && (
+        <div
+          className="edit-lock"
+          onClick={() => window.alert("Save or cancel your edits before leaving this panel.")}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            window.alert("Save or cancel your edits before leaving this panel.");
+          }}
+        />
+      )}
+
       {editing && (
-        <div className="edit-float" style={editPos}>
-          <h3>Edit node</h3>
-          <label>Title</label>
-          <input
-            autoFocus
-            value={editing.title}
-            onChange={(e) => updateNode(editing.id, { title: e.target.value })}
-          />
-          <label>Description</label>
-          <textarea
-            value={editing.description}
-            onChange={(e) => updateNode(editing.id, { description: e.target.value })}
-          />
-          <label>Type</label>
-          <select
-            value={editing.type}
-            onChange={(e) => updateNode(editing.id, { type: e.target.value as NodeKind })}
-          >
-            {(["concept", "category", "task", "info"] as NodeKind[]).map((kind) => (
-              <option key={kind} value={kind}>{KIND_LABEL[kind]}</option>
-            ))}
-          </select>
-          <label>Size</label>
-          <input
-            type="range"
-            min={0.55}
-            max={2.4}
-            step={0.05}
-            value={editing.size}
-            onChange={(e) => updateNode(editing.id, { size: Number(e.target.value) })}
-          />
-          <div className="swatch-row" style={{ marginTop: 10 }}>
-            {LEVEL_COLORS.map((c) => (
-              <button
-                key={c}
-                type="button"
-                className={`swatch${editing.color === c || nodeColor(editing, settings.colorBy) === c ? " on" : ""}`}
-                style={{ background: c }}
-                onClick={() => updateNode(editing.id, { color: c })}
-              />
-            ))}
-          </div>
-          <div className="edit-actions">
-            <button
-              type="button"
-              className="danger ghost"
-              onClick={() => removeNode(editing.id, false)}
-            >
-              Delete
-            </button>
-            <button type="button" className="ghost" onClick={() => setEditingId(null)}>Done</button>
-          </div>
-        </div>
+        <EditNodePanel
+          key={editing.id}
+          node={editing}
+          colorBy={settings.colorBy}
+          style={editPos}
+          saveRef={editSaveRef}
+          onDirty={setEditLocked}
+          onSave={(patch) => {
+            updateNode(editing.id, patch);
+            setEditLocked(false);
+            setEditingId(null);
+          }}
+          onClose={() => {
+            setEditLocked(false);
+            setEditingId(null);
+          }}
+          onDelete={() => removeNode(editing.id, false)}
+        />
       )}
 
       {editingLink && (
-        <div className="edit-float" style={{ left: actionPos.left, top: Math.min(window.innerHeight - 220, actionPos.top + 36) }}>
-          <h3>Edit connection</h3>
-          <label>Arrows</label>
-          <div className="chip-row">
-            {([
-              ["none", "None"],
-              ["one", "One"],
-              ["both", "Two"],
-            ] as const).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                className={`chip${editingLink.arrows === value ? " on" : ""}`}
-                onClick={() => updateLink(editingLink.id, { arrows: value })}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <label>Type</label>
-          <div className="chip-row">
-            <button
-              type="button"
-              className={`chip${editingLink.kind === "parent" ? " on" : ""}`}
-              onClick={() => updateLink(editingLink.id, { kind: "parent" })}
-            >
-              Hierarchy
-            </button>
-            <button
-              type="button"
-              className={`chip${editingLink.kind === "cross" ? " on" : ""}`}
-              onClick={() => updateLink(editingLink.id, { kind: "cross" })}
-            >
-              Cross
-            </button>
-          </div>
-          <div className="edit-actions">
-            <button type="button" className="ghost" onClick={() => setEditingLinkId(null)}>Done</button>
-          </div>
-        </div>
+        <EditLinkPanel
+          key={editingLink.id}
+          link={editingLink}
+          style={editLinkPos}
+          saveRef={editSaveRef}
+          onDirty={setEditLocked}
+          onSave={(patch) => {
+            updateLink(editingLink.id, patch);
+            setEditLocked(false);
+            setEditingLinkId(null);
+          }}
+          onClose={() => {
+            setEditLocked(false);
+            setEditingLinkId(null);
+          }}
+          onDelete={() => removeLink(editingLink.id)}
+        />
       )}
 
-      <InfoPanel open={infoOpen} onClose={() => setInfoOpen(false)} />
+      <SaveConfirmModal
+        open={saveOpen}
+        changes={actions}
+        onConfirm={commitSave}
+        onContinue={() => setSaveOpen(false)}
+      />
       {toast && <div className="toast">{toast}</div>}
       <input
         ref={importRef}
@@ -858,6 +990,7 @@ export default function App() {
             setNodes(doc.nodes);
             setLinks(doc.links);
             setSettings(doc.settings);
+            setActions([]);
             showToast("Imported graph");
           } catch {
             showToast("Could not import that file");
