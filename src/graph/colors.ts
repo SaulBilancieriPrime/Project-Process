@@ -13,6 +13,13 @@ export function sizeForLevel(level: number) {
   return Math.max(0.62, 1.72 - level * 0.2);
 }
 
+export function normalizeHex(hex: string) {
+  const raw = hex.trim().toLowerCase().replace("#", "");
+  if (!raw) return "#000000";
+  const full = raw.length === 3 ? raw.split("").map((c) => c + c).join("") : raw;
+  return `#${full}`;
+}
+
 export function nodeColor(node: GraphNode, colorBy: ColorBy) {
   if (colorBy === "custom" && node.color) return node.color;
   if (colorBy === "type") return node.color || TYPE_COLORS[node.type];

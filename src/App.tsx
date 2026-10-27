@@ -48,6 +48,7 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [levels, setLevels] = useState<number[]>([]);
   const [types, setTypes] = useState<NodeKind[]>([]);
+  const [colors, setColors] = useState<string[]>([]);
   const [hideFiltered, setHideFiltered] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -429,6 +430,7 @@ export default function App() {
             search={search}
             levels={levels}
             types={types}
+            colors={colors}
             hideFiltered={hideFiltered}
             theme={theme}
             width={size.w}
@@ -623,11 +625,13 @@ export default function App() {
           search={search}
           levels={levels}
           types={types}
+          colors={colors}
           hideFiltered={hideFiltered}
           selectedIds={selectedIds}
           onSearch={setSearch}
           onLevels={setLevels}
           onTypes={setTypes}
+          onColors={setColors}
           onHideFiltered={setHideFiltered}
           onSettings={patchSettings}
           onFocus={focusNode}

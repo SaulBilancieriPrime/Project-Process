@@ -1,12 +1,7 @@
+import { LEVEL_COLORS } from "./graph/colors";
 import { DEFAULT_SETTINGS, type GraphDocument, type GraphLink, type GraphNode, type NodeKind } from "./types";
 
-export const LIFECYCLE_ORANGE = "#e67e22";
 
-const PURSUIT = "#9333ea";
-const DELIVERY = "#ca8a04";
-const BUSINESS = "#dc2626";
-const LEADERSHIP = "#ea580c";
-const ROOT_COLOR = "#64748b";
 
 type WorkflowBranch = {
   id: string;
@@ -19,7 +14,7 @@ const PRIME_PM_TREE: WorkflowBranch[] = [
   {
     id: "pursuit",
     title: "1.0 Pursuit (Win Work)",
-    color: PURSUIT,
+    color: LEVEL_COLORS[0],
     workflows: [
       {
         id: "1.1",
@@ -64,7 +59,7 @@ const PRIME_PM_TREE: WorkflowBranch[] = [
   {
     id: "delivery",
     title: "2.0 Delivery (Deliver Work)",
-    color: DELIVERY,
+    color: LEVEL_COLORS[1],
     workflows: [
       {
         id: "2.1",
@@ -162,7 +157,7 @@ const PRIME_PM_TREE: WorkflowBranch[] = [
   {
     id: "business",
     title: "3.0 Business (Run the Business)",
-    color: BUSINESS,
+    color: LEVEL_COLORS[2],
     workflows: [
       {
         id: "3.1",
@@ -225,7 +220,7 @@ const PRIME_PM_TREE: WorkflowBranch[] = [
   {
     id: "leadership",
     title: "4.0 Leadership (Lead People)",
-    color: LEADERSHIP,
+    color: LEVEL_COLORS[3],
     workflows: [
       {
         id: "4.1",
@@ -347,7 +342,7 @@ export function createSampleDocument(): GraphDocument {
       0,
       xRoot,
       rootY,
-      ROOT_COLOR,
+      LEVEL_COLORS[6],
       "concept",
       1.55,
     ),

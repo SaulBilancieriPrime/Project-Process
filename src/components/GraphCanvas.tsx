@@ -21,6 +21,7 @@ type Props = {
   search: string;
   levels: number[];
   types: NodeKind[];
+  colors: string[];
   hideFiltered: boolean;
   theme: "light" | "dark";
   width: number;
@@ -141,6 +142,7 @@ export default function GraphCanvas({
   search,
   levels,
   types,
+  colors,
   hideFiltered,
   theme,
   width,
@@ -182,7 +184,7 @@ export default function GraphCanvas({
   const graphData = useMemo(() => {
     const visible = nodes.filter((n) => {
       if (hidden.has(n.id)) return false;
-      if (hideFiltered && !isFiltered(n, search, levels, types)) return false;
+      if (hideFiltered && !isFiltered(n, search, levels, types, colors, settings.colorBy)) return false;
       return true;
     });
     const ids = new Set(visible.map((n) => n.id));
@@ -194,7 +196,7 @@ export default function GraphCanvas({
         return [{ id: l.id, source: e.source, target: e.target, kind: l.kind, arrows: l.arrows ?? "none" }];
       }),
     };
-  }, [nodes, links, hidden, hideFiltered, search, levels, types]);
+  }, [nodes, links, hidden, hideFiltered, search, levels, types, colors, settings.colorBy]);
 
   useEffect(() => {
     if (!placeArmed) return;
@@ -565,8 +567,8 @@ export default function GraphCanvas({
         const src = nodes.find((n) => n.id === e.source);
         const tgt = nodes.find((n) => n.id === e.target);
         const dim =
-          (src && !isFiltered(src, search, levels, types)) ||
-          (tgt && !isFiltered(tgt, search, levels, types));
+          (src && !isFiltered(src, search, levels, types, colors, settings.colorBy)) ||
+          (tgt && !isFiltered(tgt, search, levels, types, colors, settings.colorBy));
         if (dim) return palette.linkDim;
         const hot = l.id === selectedLinkId || selectedSet.has(e.source) || selectedSet.has(e.target);
         if (l.kind === "cross") return hot ? palette.linkCrossHot : palette.linkCross;
@@ -629,7 +631,7 @@ export default function GraphCanvas({
         const x = node.x ?? 0;
         const y = node.y ?? 0;
         const color = nodeColor(node, settings.colorBy);
-        const matched = isFiltered(node, search, levels, types);
+        const matched = isFiltered(node, search, levels, types, colors, settings.colorBy);
         const dim = !matched;
         const selected = selectedSet.has(node.id);
         const hovered = node.id === hoveredId;

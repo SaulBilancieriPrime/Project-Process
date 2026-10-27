@@ -11,11 +11,13 @@ type Props = {
   search: string;
   levels: number[];
   types: NodeKind[];
+  colors: string[];
   hideFiltered: boolean;
   selectedIds: string[];
   onSearch: (v: string) => void;
   onLevels: (v: number[]) => void;
   onTypes: (v: NodeKind[]) => void;
+  onColors: (v: string[]) => void;
   onHideFiltered: (v: boolean) => void;
   onSettings: (patch: Partial<GraphSettings>) => void;
   onFocus: (id: string) => void;
@@ -29,6 +31,10 @@ function toggleType(list: NodeKind[], value: NodeKind) {
   return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
 }
 
+function toggleColor(list: string[], value: string) {
+  return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
+}
+
 export default function Sidebar({
   open,
   nodes,
@@ -36,11 +42,13 @@ export default function Sidebar({
   search,
   levels,
   types,
+  colors,
   hideFiltered,
   selectedIds,
   onSearch,
   onLevels,
   onTypes,
+  onColors,
   onHideFiltered,
   onSettings,
   onFocus,
@@ -99,6 +107,21 @@ export default function Sidebar({
             </button>
           ))}
         </div>
+        <div className="filter-sublabel">Color</div>
+        <div className="swatch-row" style={{ marginTop: 6 }}>
+          {LEVEL_COLORS.map((c) => (
+            <button
+              key={c}
+              type="button"
+              className={`swatch${colors.includes(c) ? " on" : ""}`}
+              style={{ background: c }}
+              title="Filter by this color"
+              aria-label="Filter by color"
+              aria-pressed={colors.includes(c)}
+              onClick={() => onColors(toggleColor(colors, c))}
+            />
+          ))}
+        </div>
         <label className="filter-row">
           <span>Hide non-matches</span>
           <input type="checkbox" checked={hideFiltered} onChange={(e) => onHideFiltered(e.target.checked)} />
@@ -119,11 +142,7 @@ export default function Sidebar({
             </button>
           ))}
         </div>
-        <div className="swatch-row" style={{ marginTop: 8 }}>
-          {LEVEL_COLORS.map((c, i) => (
-            <span key={c} className="swatch" style={{ background: c }} title={`Level ${i}`} />
-          ))}
-        </div>
+        <p className="filter-hint">Level palette when coloring by level. Use Filters → Color to narrow the map.</p>
       </section>
 
       <section>
@@ -174,7 +193,7 @@ export default function Sidebar({
           <input
             type="range"
             min={24}
-            max={140}
+            max={300}
             value={settings.linkDistance}
             onChange={(e) => onSettings({ linkDistance: Number(e.target.value) })}
           />

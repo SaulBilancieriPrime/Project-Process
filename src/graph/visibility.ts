@@ -1,4 +1,5 @@
-import type { GraphLink, GraphNode, NodeKind } from "../types";
+import { nodeColor, normalizeHex } from "./colors";
+import type { ColorBy, GraphLink, GraphNode, NodeKind } from "../types";
 
 export function childrenOf(nodes: GraphNode[], id: string) {
   return nodes.filter((n) => n.parentId === id);
@@ -46,10 +47,17 @@ export function isFiltered(
   query: string,
   levels: number[],
   types: NodeKind[],
+  colors: string[],
+  colorBy: ColorBy,
 ) {
   if (!matchesQuery(node, query)) return false;
   if (levels.length && !levels.includes(node.level)) return false;
   if (types.length && !types.includes(node.type)) return false;
+  if (colors.length) {
+    const paint = normalizeHex(nodeColor(node, colorBy));
+    const allowed = new Set(colors.map(normalizeHex));
+    if (!allowed.has(paint)) return false;
+  }
   return true;
 }
 
