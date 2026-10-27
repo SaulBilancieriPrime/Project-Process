@@ -1,4 +1,4 @@
-import { cx, toolBtn, toolOn } from "../styles";
+import { toolBtn, toolBtnOn } from "../styles";
 
 type Props = {
   physics: boolean;
@@ -6,7 +6,6 @@ type Props = {
   onFit: () => void;
   onReorg: () => void;
   onPhysics: () => void;
-  onSave: () => void;
   onCardInfo: () => void;
 };
 
@@ -16,20 +15,23 @@ export default function CanvasTools({
   onFit,
   onReorg,
   onPhysics,
-  onSave,
   onCardInfo,
 }: Props) {
   return (
-    <div className="canvas-tools absolute right-3 bottom-3 z-[8] flex gap-1.5 rounded-[10px] border border-[var(--line)] bg-[color-mix(in_srgb,var(--card)_88%,transparent)] p-1.5 shadow-[var(--shadow)] backdrop-blur-[10px] [.has-side_&]:right-[308px]">
+    <div className="canvas-tools flex w-full shrink-0 flex-wrap gap-1.5 rounded-[10px] border border-[var(--line)] bg-[color-mix(in_srgb,var(--card)_88%,transparent)] p-1.5 shadow-[var(--shadow)] backdrop-blur-[10px]">
       <button type="button" className={toolBtn} onClick={onFit}>Fit</button>
       <button type="button" className={toolBtn} onClick={onReorg}>Reorg</button>
-      <button type="button" className={cx(toolBtn, physics && toolOn)} onClick={onPhysics}>
-        {physics ? "Physics on" : "Physics off"}
-      </button>
-      <button type="button" className={toolBtn} onClick={onSave}>Save</button>
       <button
         type="button"
-        className={cx(toolBtn, cardInfo && toolOn)}
+        className={physics ? toolBtnOn : toolBtn}
+        aria-pressed={physics}
+        onClick={onPhysics}
+      >
+        {physics ? "Physics on" : "Physics off"}
+      </button>
+      <button
+        type="button"
+        className={cardInfo ? toolBtnOn : toolBtn}
         aria-pressed={cardInfo}
         onClick={onCardInfo}
       >

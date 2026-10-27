@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import CanvasTools from "./components/CanvasTools";
 import EditLinkPanel from "./components/EditLinkPanel";
-import EditNodePanel from "./components/EditNodePanel";
+import EditNodePanel, { type NodeEditPreview } from "./components/EditNodePanel";
+import FilterPanel from "./components/FilterPanel";
 import PlusMenu from "./components/PlusMenu";
 import PlusMenuButton from "./components/PlusMenuButton";
 import GraphCanvas, { type GraphHandle } from "./components/GraphCanvas";
 import Header from "./components/Header";
+import HistoryPanel from "./components/HistoryPanel";
+import InfoPanel from "./components/InfoPanel";
 import NodeContextMenu from "./components/NodeContextMenu";
 import NodePreviewPanel from "./components/NodePreviewPanel";
 import SaveConfirmModal from "./components/SaveConfirmModal";
-import Sidebar, { type SidebarTab } from "./components/Sidebar";
 import {
   ACTION_COALESCE_MS,
   actionKindFromChanges,
@@ -21,7 +23,6 @@ import {
 import { nodeColor } from "./graph/colors";
 import { addChild, addLink, blankNode, deleteNode, insertNodeBetween } from "./graph/ops";
 import { linkEnds } from "./graph/visibility";
-import { createSampleDocument } from "./sampleData";
 import {
   downloadJson,
   loadDocument,
@@ -31,8 +32,8 @@ import {
   saveDocument,
   saveTheme,
 } from "./storage";
-import { ctxBox, cx, dangerText, ghostBtn, menuItem, plusMenuBox, toolBtn, toolOn } from "./styles";
-import type { ArrowStyle, GraphLink, GraphNode, GraphSettings, NodeKind } from "./types";
+import { ctxBox, cx, dangerText, ghostBtn, menuItem, plusMenuBox } from "./styles";
+import type { ArrowStyle, GraphLink, GraphNode, GraphSettings } from "./types";
 
 type MenuState =
   | { kind: "node"; id: string; x: number; y: number }
@@ -58,12 +59,10 @@ export default function App() {
   const [placing, setPlacing] = useState<PlaceState | null>(null);
   const [plusOpen, setPlusOpen] = useState(false);
   const [menu, setMenu] = useState<MenuState | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [sidebarTab, setSidebarTab] = useState<SidebarTab>("filter");
   const [saveOpen, setSaveOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [levels, setLevels] = useState<number[]>([]);
-  const [types, setTypes] = useState<NodeKind[]>([]);
   const [colors, setColors] = useState<string[]>([]);
   const [hideFiltered, setHideFiltered] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -81,13 +80,19 @@ export default function App() {
   const [editLocked, setEditLocked] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [pendingEdit, setPendingEdit] = useState<PendingEdit | null>(null);
+  const [editVisual, setEditVisual] = useState<NodeEditPreview | null>(null);
 
   const editing = nodes.find((n) => n.id === editingId) ?? null;
   const editingLink = links.find((l) => l.id === editingLinkId) ?? null;
   const preview =
-    previewOpen && !editing && !editingLink && !menu && !placing && !connect && selectedIds.length === 1
+    previewOpen && !editingLink && !menu && !placing && !connect && selectedIds.length === 1
       ? nodes.find((n) => n.id === selectedIds[0]) ?? null
       : null;
+  const graphNodes = useMemo(() => {
+    if (!editVisual || !editingId) return nodes;
+    return nodes.map((n) => (n.id === editingId ? { ...n, size: editVisual.size, color: editVisual.color } : n));
+  }, [nodes, editingId, editVisual]);
+  const previewNode = preview && editVisual && preview.id === editingId ? { ...preview, ...editVisual } : preview;
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -129,6 +134,7 @@ export default function App() {
     setEditingLinkId(null);
     setPreviewOpen(false);
     setPendingEdit(null);
+    setEditVisual(null);
   }, []);
 
   useEffect(() => {
@@ -156,12 +162,13 @@ export default function App() {
     setPreviewOpen(false);
     setSelectedIds([]);
     setPicked(null);
+    setEditingId(null);
+    setEditVisual(null);
   }, []);
 
   useEffect(() => {
-    const editingOpen = editingId !== null || editingLinkId !== null;
-    const previewShowing = previewOpen && !editingOpen && selectedIds.length === 1;
-    if (!menu && !editingOpen && !previewShowing) return;
+    const linkEditing = editingLinkId !== null;
+    if (!menu && !linkEditing) return;
     const onPointerDown = (e: PointerEvent) => {
       const target = e.target;
       if (!(target instanceof Element)) return;
@@ -169,12 +176,10 @@ export default function App() {
       if (menu && !target.closest(".ctx, .plus-menu-floating")) {
         setMenu(null);
       }
-      if (editingOpen && !editLocked && !target.closest(".edit-float") && !onGraph) {
+      if (linkEditing && !editLocked && !target.closest(".edit-float") && !onGraph) {
         dismissEditPanel();
         setSelectedIds([]);
         setPicked(null);
-      } else if (previewShowing && !target.closest(".edit-float") && !onGraph) {
-        dismissPreview();
       }
     };
     const timer = window.setTimeout(() => window.addEventListener("pointerdown", onPointerDown, true), 0);
@@ -182,7 +187,7 @@ export default function App() {
       window.clearTimeout(timer);
       window.removeEventListener("pointerdown", onPointerDown, true);
     };
-  }, [menu, editingId, editingLinkId, editLocked, dismissEditPanel, dismissPreview, previewOpen, selectedIds.length]);
+  }, [menu, editingLinkId, editLocked, dismissEditPanel]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -199,7 +204,10 @@ export default function App() {
         setSelectedIds([]);
         setPreviewOpen(false);
         setPendingEdit(null);
+        setEditVisual(null);
         setSaveOpen(false);
+        setHistoryOpen(false);
+        setInfoOpen(false);
       }
       if (typing) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
@@ -211,7 +219,7 @@ export default function App() {
         requestSave();
       }
       if (e.key === "Delete") {
-        if (editingId || editingLinkId || editLocked) return;
+        if (editLocked || editingLinkId) return;
         if (picked?.kind === "link") removeLink(picked.id);
         else if (selectedIds.length) removeNodes(selectedIds);
       }
@@ -230,9 +238,7 @@ export default function App() {
 
   function openContextMenu(next: MenuState) {
     if (editLocked) return;
-    dismissEditPanel();
     setMenu(next);
-    setPicked(null);
     setPlusOpen(false);
   }
 
@@ -394,7 +400,7 @@ export default function App() {
     showToast("Saved locally");
   }
 
-  function addLooseNode(at: { x: number; y: number }, edit = false) {
+  function addLooseNode(at: { x: number; y: number }) {
     const parentId = placing?.parentId;
     const parent = parentId
       ? (liveNode(parentId) ?? nodes.find((n) => n.id === parentId)) ?? null
@@ -407,8 +413,10 @@ export default function App() {
       applyGraph(`Added node under ${parent.title || "node"}`, { nodes: placed, links: next.links });
       setSelectedIds([next.id]);
       setPicked({ kind: "node", id: next.id });
+      setEditingId(next.id);
+      setPreviewOpen(true);
+      setEditVisual(null);
       setPlacing(null);
-      if (edit) setEditingId(next.id);
       return;
     }
     const created = blankNode({
@@ -424,8 +432,10 @@ export default function App() {
     applyGraph(`Added ${created.title}`, { nodes: [...nodes, created] });
     setSelectedIds([created.id]);
     setPicked({ kind: "node", id: created.id });
+    setEditingId(created.id);
+    setPreviewOpen(true);
+    setEditVisual(null);
     setPlacing(null);
-    if (edit) setEditingId(created.id);
   }
 
   function startPlace(parentId?: string, size?: number) {
@@ -496,6 +506,8 @@ export default function App() {
     setSelectedIds([next.id]);
     setPicked({ kind: "node", id: next.id });
     setEditingId(next.id);
+    setPreviewOpen(true);
+    setEditVisual(null);
     setEditingLinkId(null);
     setMenu(null);
     showToast("Inserted node on connection");
@@ -511,11 +523,6 @@ export default function App() {
 
   function pickNode(id: string, additive = false) {
     if (editLocked) return;
-    if (!additive && editingId !== null && editingId !== id) {
-      dismissEditPanel();
-    } else if (!additive && editingLinkId !== null) {
-      dismissEditPanel();
-    }
     setSelectedIds((prev) => {
       if (additive) return prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id];
       return [id];
@@ -524,7 +531,15 @@ export default function App() {
     setEditingLinkId(null);
     setMenu(null);
     setPlusOpen(false);
-    setPreviewOpen(!additive);
+    if (additive) {
+      setEditingId(null);
+      setPreviewOpen(false);
+      setEditVisual(null);
+      return;
+    }
+    if (editingId !== id) setEditVisual(null);
+    setEditingId(id);
+    setPreviewOpen(true);
   }
 
   function pickLink(id: string) {
@@ -532,28 +547,10 @@ export default function App() {
     setSelectedIds([]);
     setPicked({ kind: "link", id });
     setEditingId(null);
+    setEditVisual(null);
     setMenu(null);
     setPlusOpen(false);
     setPreviewOpen(false);
-  }
-
-  function requestNodeEdit(id: string) {
-    if (editLocked) return;
-    setPreviewOpen(false);
-    setMenu(null);
-    setPlusOpen(false);
-    if (editingId === id && editingLinkId === null) return;
-    if (editingId !== null || editingLinkId !== null) {
-      setEditLocked(false);
-      setPendingEdit({ kind: "node", id });
-      setEditingId(null);
-      setEditingLinkId(null);
-      return;
-    }
-    setSelectedIds([id]);
-    setPicked({ kind: "node", id });
-    setEditingLinkId(null);
-    setEditingId(id);
   }
 
   function requestLinkEdit(id: string) {
@@ -614,15 +611,34 @@ export default function App() {
     return { left: (rect?.left ?? 0) + s.x, top: (rect?.top ?? 0) + s.y };
   }
 
-  const editPos = useMemo(() => {
-    const live = editing ? liveNode(editing.id) : preview ? liveNode(preview.id) : null;
+  const previewPos = useMemo(() => {
+    if (!previewNode) return { left: 80, top: 80 };
+    const live = liveNode(previewNode.id);
     if (!live || live.x == null || live.y == null) return { left: 80, top: 80 };
     const s = screenOf(live.x, live.y);
+    const k = zoom || 1;
+    const enlarge = Number.isFinite(settings.enlarge) ? settings.enlarge : 1;
+    const base = (2.7 + previewNode.size * 2 + Math.max(0, 2.1 - previewNode.level * 0.32)) * enlarge;
+    const r = Math.min(base * k, 6.5 + previewNode.size * 4.5 * enlarge);
+    const gap = 14;
+    const cardW = 240;
+    const cardH = 92;
+    let left = s.left + r + gap;
+    let top = s.top - r - gap - cardH * 0.45;
+    if (left + cardW > window.innerWidth - 12) {
+      left = s.left - r - gap - cardW;
+    }
+    if (top < 56) {
+      top = s.top + r + gap;
+    }
+    if (top + cardH > window.innerHeight - 12) {
+      top = Math.max(56, s.top - r - gap - cardH);
+    }
     return {
-      left: Math.min(window.innerWidth - 300, Math.max(12, s.left + 18)),
-      top: Math.min(window.innerHeight - 280, Math.max(60, s.top - 20)),
+      left: Math.min(window.innerWidth - cardW - 12, Math.max(12, left)),
+      top: Math.min(window.innerHeight - cardH - 12, Math.max(56, top)),
     };
-  }, [editing, preview, size, zoom]);
+  }, [previewNode, size, zoom, settings.enlarge]);
 
   const editLinkPos = useMemo(() => {
     if (!editingLink) return { left: 80, top: 80 };
@@ -678,6 +694,9 @@ export default function App() {
         nodeCount={nodes.length}
         linkCount={links.length}
         dirty={dirty}
+        historyCount={actions.length}
+        historyOpen={historyOpen}
+        infoOpen={infoOpen}
         theme={theme}
         onTheme={setTheme}
         onSave={requestSave}
@@ -686,42 +705,23 @@ export default function App() {
           showToast("Exported JSON");
         }}
         onImport={() => importRef.current?.click()}
-        onInfo={() => {
-          setSidebarOpen(true);
-          setSidebarTab("help");
+        onHistory={() => {
+          setHistoryOpen((v) => !v);
+          setInfoOpen(false);
         }}
-        onReset={() => {
-          if (editLocked) return;
-          const sample = createSampleDocument();
-          setNodes(sample.nodes);
-          setLinks(sample.links);
-          setSettings(sample.settings);
-          setActions([]);
-          setSelectedIds([]);
-          setEditingId(null);
-          setEditingLinkId(null);
-          setPicked(null);
-          setPlacing(null);
-          setConnect(null);
-          showToast("Loaded sample process");
-          window.setTimeout(() => {
-            graphRef.current?.zoomToFit(500, 80);
-            window.setTimeout(() => {
-              const fg = graphRef.current as (GraphHandle & { zoom?: (k?: number, ms?: number) => number }) | undefined;
-              const k = fg?.zoom?.();
-              if (typeof k === "number" && k > 1.05) fg?.zoom?.(0.92, 280);
-            }, 520);
-          }, 80);
+        onInfo={() => {
+          setInfoOpen((v) => !v);
+          setHistoryOpen(false);
         }}
       />
 
-      <div className={cx("stage relative min-h-0 flex-1 bg-[var(--graph-bg)]", sidebarOpen && "has-side")} ref={stageRef}>
+      <div className="stage relative min-h-0 flex-1 bg-[var(--graph-bg)]" ref={stageRef}>
         <div
           className="graph-wrap absolute inset-0"
           onContextMenu={(e) => e.preventDefault()}
         >
           <GraphCanvas
-            nodes={nodes}
+            nodes={graphNodes}
             links={links}
             settings={settings}
             selectedIds={selectedIds}
@@ -734,8 +734,6 @@ export default function App() {
             placeSize={placing?.size}
             linkArrows={connect?.arrows ?? "none"}
             search={search}
-            levels={levels}
-            types={types}
             colors={colors}
             hideFiltered={hideFiltered}
             theme={theme}
@@ -750,9 +748,16 @@ export default function App() {
             onMarquee={(ids, additive) => {
               if (editLocked) return;
               setSelectedIds((prev) => (additive ? Array.from(new Set([...prev, ...ids])) : ids));
-              if (ids.length === 1) setPicked({ kind: "node", id: ids[0] });
-              else setPicked(null);
-              setEditingId(null);
+              if (ids.length === 1) {
+                setPicked({ kind: "node", id: ids[0] });
+                setEditingId(ids[0]);
+                setPreviewOpen(true);
+              } else {
+                setPicked(null);
+                setEditingId(null);
+                setPreviewOpen(false);
+              }
+              setEditVisual(null);
               setEditingLinkId(null);
               setMenu(null);
             }}
@@ -784,10 +789,13 @@ export default function App() {
             }}
             onSelectLink={pickLink}
             onHover={setHoveredId}
-            onEdit={(id) => requestNodeEdit(id)}
             onEditLink={(id) => requestLinkEdit(id)}
             onNodeMenu={(id, x, y) => {
+              if (editLocked) return;
               setSelectedIds((prev) => (prev.includes(id) ? prev : [id]));
+              if (editingId !== id) setEditVisual(null);
+              setEditingId(id);
+              setPicked({ kind: "node", id });
               openContextMenu({ kind: "node", id, x, y });
             }}
             onLinkMenu={(id, x, y) => openContextMenu({ kind: "link", id, x, y })}
@@ -888,54 +896,38 @@ export default function App() {
           onLink={(arrows) => startLink(arrows)}
         />
 
-        <CanvasTools
-          physics={settings.physics}
-          cardInfo={Boolean(settings.cardInfo)}
-          onFit={fitGraph}
-          onReorg={reheat}
-          onPhysics={() => {
-            const next = !settings.physics;
-            applyPhysicsFreeze(next);
-            applyGraph(next ? "Turned physics on" : "Turned physics off", { settings: { ...settings, physics: next } });
-            window.setTimeout(() => {
+        <div className="absolute top-14 left-3 z-[8] flex w-[260px] max-h-[calc(100%-68px)] flex-col gap-2">
+          <FilterPanel
+            nodes={nodes}
+            settings={settings}
+            search={search}
+            colors={colors}
+            hideFiltered={hideFiltered}
+            selectedIds={selectedIds}
+            onSearch={setSearch}
+            onColors={setColors}
+            onHideFiltered={setHideFiltered}
+            onSettings={patchSettings}
+            onFocus={focusNode}
+          />
+          <CanvasTools
+            physics={settings.physics}
+            cardInfo={Boolean(settings.cardInfo)}
+            onFit={fitGraph}
+            onReorg={reheat}
+            onPhysics={() => {
+              const next = !settings.physics;
               applyPhysicsFreeze(next);
-              if (next) graphRef.current?.d3ReheatSimulation();
-            }, 40);
-          }}
-          onSave={requestSave}
-          onCardInfo={() => applyGraph(settings.cardInfo ? "Hid cards" : "Showed cards", { settings: { ...settings, cardInfo: !settings.cardInfo } })}
-        />
+              applyGraph(next ? "Turned physics on" : "Turned physics off", { settings: { ...settings, physics: next } });
+              window.setTimeout(() => {
+                applyPhysicsFreeze(next);
+                if (next) graphRef.current?.d3ReheatSimulation();
+              }, 40);
+            }}
+            onCardInfo={() => applyGraph(settings.cardInfo ? "Hid cards" : "Showed cards", { settings: { ...settings, cardInfo: !settings.cardInfo } })}
+          />
+        </div>
 
-        <button
-          type="button"
-          className={cx(toolBtn, "side-toggle absolute top-3 right-3 z-[9] [.has-side_&]:right-[312px] max-[820px]:[.has-side_&]:top-auto max-[820px]:[.has-side_&]:right-3 max-[820px]:[.has-side_&]:bottom-[calc(42%+8px)]", sidebarOpen && toolOn)}
-          onClick={() => setSidebarOpen((v) => !v)}
-        >
-          {sidebarOpen ? "Hide panel" : "Panel"}
-        </button>
-
-        <Sidebar
-          open={sidebarOpen}
-          tab={sidebarTab}
-          onTab={setSidebarTab}
-          nodes={nodes}
-          settings={settings}
-          search={search}
-          levels={levels}
-          types={types}
-          colors={colors}
-          hideFiltered={hideFiltered}
-          selectedIds={selectedIds}
-          history={actions}
-          onUndo={undoAction}
-          onSearch={setSearch}
-          onLevels={setLevels}
-          onTypes={setTypes}
-          onColors={setColors}
-          onHideFiltered={setHideFiltered}
-          onSettings={patchSettings}
-          onFocus={focusNode}
-        />
       </div>
 
       {selectedIds.length > 1 && !menu && !editing && !editingLink && !connect && !placing && (
@@ -1002,28 +994,30 @@ export default function App() {
         />
       )}
 
-      {preview && (
+      {previewNode && (
         <NodePreviewPanel
-          node={preview}
+          node={previewNode}
           colorBy={settings.colorBy}
-          style={editPos}
+          style={previewPos}
         />
       )}
 
-      {editing && (
+      {editing && !placing && !connect && (
         <EditNodePanel
           key={editing.id}
           node={editing}
           colorBy={settings.colorBy}
-          style={editPos}
           saveRef={editSaveRef}
           onDirty={setEditLocked}
+          onPreview={setEditVisual}
           onSave={(patch) => {
             updateNode(editing.id, patch);
-            dismissEditPanel();
+            setEditVisual(null);
           }}
           onClose={() => {
             dismissEditPanel();
+            setSelectedIds([]);
+            setPicked(null);
           }}
           onDelete={() => removeNode(editing.id, false)}
         />
@@ -1046,6 +1040,15 @@ export default function App() {
           onDelete={() => removeLink(editingLink.id)}
         />
       )}
+
+      <HistoryPanel
+        open={historyOpen}
+        history={actions}
+        onUndo={undoAction}
+        onClose={() => setHistoryOpen(false)}
+      />
+
+      <InfoPanel open={infoOpen} onClose={() => setInfoOpen(false)} />
 
       <SaveConfirmModal
         open={saveOpen}

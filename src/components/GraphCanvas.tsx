@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "rea
 import ForceGraph2D, { type ForceGraphMethods } from "react-force-graph-2d";
 import { graphTheme, nodeColor, sizeForLevel, withAlpha } from "../graph/colors";
 import { isFiltered, linkEnds } from "../graph/visibility";
-import type { ArrowStyle, GraphLink, GraphNode, GraphSettings, NodeKind } from "../types";
+import type { ArrowStyle, GraphLink, GraphNode, GraphSettings } from "../types";
 
 export type GraphHandle = ForceGraphMethods<GraphNode, GraphLink>;
 
@@ -21,8 +21,6 @@ type Props = {
   placeSize?: number;
   linkArrows: ArrowStyle;
   search: string;
-  levels: number[];
-  types: NodeKind[];
   colors: string[];
   hideFiltered: boolean;
   theme: "light" | "dark";
@@ -33,7 +31,6 @@ type Props = {
   onGroupMoveEnd: (positions: { id: string; x: number; y: number }[]) => void;
   onSelectLink: (id: string) => void;
   onHover: (id: string | null) => void;
-  onEdit: (id: string) => void;
   onEditLink: (id: string) => void;
   onNodeMenu: (id: string, x: number, y: number) => void;
   onLinkMenu: (id: string, x: number, y: number) => void;
@@ -144,8 +141,6 @@ export default function GraphCanvas({
   placeSize,
   linkArrows,
   search,
-  levels,
-  types,
   colors,
   hideFiltered,
   theme,
@@ -156,7 +151,6 @@ export default function GraphCanvas({
   onGroupMoveEnd,
   onSelectLink,
   onHover,
-  onEdit,
   onEditLink,
   onNodeMenu,
   onLinkMenu,
@@ -187,7 +181,7 @@ export default function GraphCanvas({
 
   const graphData = useMemo(() => {
     const visible = nodes.filter((n) => {
-      if (hideFiltered && !isFiltered(n, search, levels, types, colors, settings.colorBy)) return false;
+      if (hideFiltered && !isFiltered(n, search, colors, settings.colorBy)) return false;
       return true;
     });
     const ids = new Set(visible.map((n) => n.id));
@@ -199,7 +193,7 @@ export default function GraphCanvas({
         return [{ id: l.id, source: e.source, target: e.target, kind: l.kind, arrows: l.arrows ?? "none" }];
       }),
     };
-  }, [nodes, links, hideFiltered, search, levels, types, colors, settings.colorBy]);
+  }, [nodes, links, hideFiltered, search, colors, settings.colorBy]);
 
   useEffect(() => {
     if (!placeArmed) return;
@@ -210,7 +204,7 @@ export default function GraphCanvas({
       const rect = host.getBoundingClientRect();
       if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) return;
       const target = e.target as HTMLElement | null;
-      if (target?.closest(".plus-wrap, .canvas-tools, .sidebar, .item-actions, .edit-float, .ctx, .omp-header")) return;
+      if (target?.closest(".plus-wrap, .filter-panel, .canvas-tools, .history-panel, .info-panel, .item-actions, .edit-float, .ctx, .omp-header")) return;
       onPlace(graphAtClient(e.clientX, e.clientY));
     };
     window.addEventListener("pointerup", onUp, true);
@@ -308,11 +302,6 @@ export default function GraphCanvas({
       skipBg.current = true;
       if (connectArmed) {
         onConnectTarget(node.id);
-        return true;
-      }
-      if (forceDbl || isDouble(node.id)) {
-        lastClick.current = null;
-        onEdit(node.id);
         return true;
       }
       onSelect(node.id, additive);
@@ -436,7 +425,7 @@ export default function GraphCanvas({
         const handledByFg = fgContextHandled.current;
         fgContextHandled.current = false;
         const target = e.target as HTMLElement | null;
-        if (target?.closest(".plus-wrap, .canvas-tools, .sidebar, .item-actions, .edit-float, .ctx, .omp-header")) return;
+        if (target?.closest(".plus-wrap, .filter-panel, .canvas-tools, .history-panel, .info-panel, .item-actions, .edit-float, .ctx, .omp-header")) return;
         if (handledByFg) return;
 
         const node = nodeAt(e.clientX, e.clientY);
@@ -469,7 +458,7 @@ export default function GraphCanvas({
         if (e.button !== 0) return;
         if (spaceHeld.current || e.altKey) return;
         const target = e.target as HTMLElement | null;
-        if (target?.closest(".plus-wrap, .canvas-tools, .sidebar, .item-actions, .edit-float, .ctx, .omp-header")) return;
+        if (target?.closest(".plus-wrap, .filter-panel, .canvas-tools, .history-panel, .info-panel, .item-actions, .edit-float, .ctx, .omp-header")) return;
         const hit = nodeAt(e.clientX, e.clientY);
         if (hit) {
           skipBg.current = true;
@@ -601,11 +590,6 @@ export default function GraphCanvas({
           onConnectTarget(n.id);
           return;
         }
-        if (ev.detail === 2 || isDouble(n.id)) {
-          lastClick.current = null;
-          onEdit(n.id);
-          return;
-        }
         onSelect(n.id, ev.shiftKey);
       }}
       onNodeRightClick={(n, ev) => {
@@ -646,8 +630,8 @@ export default function GraphCanvas({
         const src = nodes.find((n) => n.id === e.source);
         const tgt = nodes.find((n) => n.id === e.target);
         const dim =
-          (src && !isFiltered(src, search, levels, types, colors, settings.colorBy)) ||
-          (tgt && !isFiltered(tgt, search, levels, types, colors, settings.colorBy));
+          (src && !isFiltered(src, search, colors, settings.colorBy)) ||
+          (tgt && !isFiltered(tgt, search, colors, settings.colorBy));
         if (dim) return palette.linkDim;
         const hot = l.id === selectedLinkId || selectedSet.has(e.source) || selectedSet.has(e.target);
         if (l.kind === "cross") return hot ? palette.linkCrossHot : palette.linkCross;
@@ -710,7 +694,7 @@ export default function GraphCanvas({
         const x = node.x ?? 0;
         const y = node.y ?? 0;
         const color = nodeColor(node, settings.colorBy);
-        const matched = isFiltered(node, search, levels, types, colors, settings.colorBy);
+        const matched = isFiltered(node, search, colors, settings.colorBy);
         const dim = !matched;
         const selected = selectedSet.has(node.id);
         const hovered = node.id === hoveredId;

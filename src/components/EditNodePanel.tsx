@@ -42,12 +42,18 @@ function isDirty(node: GraphNode, draft: Draft) {
   );
 }
 
+export type NodeEditPreview = {
+  size: number;
+  color?: string;
+};
+
 type Props = {
   node: GraphNode;
   colorBy: ColorBy;
-  style: CSSProperties;
+  style?: CSSProperties;
   saveRef: MutableRefObject<(() => void) | null>;
   onDirty: (dirty: boolean) => void;
+  onPreview: (visual: NodeEditPreview | null) => void;
   onSave: (patch: Draft) => void;
   onClose: () => void;
   onDelete: () => void;
@@ -59,6 +65,7 @@ export default function EditNodePanel({
   style,
   saveRef,
   onDirty,
+  onPreview,
   onSave,
   onClose,
   onDelete,
@@ -75,6 +82,13 @@ export default function EditNodePanel({
   useEffect(() => {
     onDirty(dirty);
   }, [dirty, onDirty]);
+
+  useEffect(() => {
+    const sizeChanged = Math.abs(draft.size - node.size) > 0.001;
+    const colorChanged = (draft.color ?? "") !== (node.color ?? "");
+    onPreview(sizeChanged || colorChanged ? { size: draft.size, color: draft.color } : null);
+    return () => onPreview(null);
+  }, [draft.size, draft.color, node.size, node.color, onPreview]);
 
   useEffect(() => {
     saveRef.current = () => {
@@ -94,10 +108,10 @@ export default function EditNodePanel({
 
   return (
     <div
-      className={`${editFloat} is-tinted`}
+      className={`${editFloat} is-tinted left-3 bottom-3 max-h-[calc(100vh-76px)] overflow-auto`}
       style={{ ...style, ["--edit-accent" as string]: accent }}
     >
-      <h3 className="mt-0 mb-2 text-[13px]">Edit Node: {node.title}</h3>
+      <h3 className="mt-0 mb-2 text-lg font-bold">Modify Node</h3>
 
       <label className={fieldLabel}>Status</label>
       <div className="mt-2.5 flex flex-wrap gap-1.5">
@@ -114,7 +128,6 @@ export default function EditNodePanel({
       <label className={fieldLabel}>Title</label>
       <input
         className={field}
-        autoFocus
         value={draft.title}
         onChange={(e) => patch({ title: e.target.value })}
       />

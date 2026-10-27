@@ -170,7 +170,6 @@ export function diffSnapshots(saved: GraphSnapshot, current: GraphSnapshot): Cha
   const settingLabels: [keyof GraphSettings, string][] = [
     ["physics", "Force layout"],
     ["radial", "Radial branch"],
-    ["colorBy", "Color grouping"],
     ["cardInfo", "Cards"],
     ["enlarge", "Enlarge"],
     ["charge", "Charge"],

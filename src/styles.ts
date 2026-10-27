@@ -40,7 +40,9 @@ export const plusMenuBox =
 export const toolBtn =
   "cursor-pointer rounded-lg border border-[var(--line)] bg-[var(--input)] px-2.5 py-1.5 font-sans text-xs text-[var(--text)] hover:bg-[var(--hover)]";
 
-export const toolOn = "border-[var(--accent)] bg-[var(--accent)] text-white";
+/** Full class list for an active toolbar toggle (do not merge with toolBtn — avoids bg/text utility conflicts). */
+export const toolBtnOn =
+  "cursor-pointer rounded-lg border border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_14%,var(--input))] px-2.5 py-1.5 font-sans text-xs font-semibold text-[var(--accent)] hover:bg-[color-mix(in_srgb,var(--accent)_22%,var(--input))]";
 
 export const sideH2 =
   "mt-0 mb-2 text-[11px] tracking-wider text-[var(--accent)] uppercase";

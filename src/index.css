@@ -46,6 +46,21 @@ html[data-theme="dark"] {
     color: var(--text);
     background: var(--graph-bg);
   }
+
+  ::selection {
+    background: color-mix(in srgb, var(--accent) 88%, #000);
+    color: #ffffff;
+  }
+
+  html[data-theme="dark"] ::selection {
+    background: color-mix(in srgb, var(--accent) 72%, #fff);
+    color: #1b1b1b;
+  }
+
+  .omp-header ::selection {
+    background: rgba(255, 255, 255, 0.35);
+    color: #ffffff;
+  }
 }
 
 /* Canvas and JS-hook leftovers that cannot become utilities. */

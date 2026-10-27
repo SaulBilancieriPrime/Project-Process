@@ -68,18 +68,18 @@ export default function HelpTab() {
         <h2>Select and edit</h2>
         <ul className="mb-2.5 ml-0 list-disc pl-4 text-xs leading-normal text-[var(--muted)] [&_li]:mb-1.5 [&_strong]:text-[var(--text)]">
           <li>
-            <strong>Click a node</strong> — select it and open a preview of
-            title, color, and assigned employee. Shift-click adds or removes
-            from the selection.
+            <strong>Click a node</strong> — select it, open a preview of title,
+            color, and assigned employee, and dock the edit form in the bottom
+            left. Shift-click adds or removes from the selection.
           </li>
           <li>
-            <strong>Double-click a node</strong> — open the edit panel. Changes
-            stay in the form until Save.
+            <strong>Edit form</strong> — changes stay in the form until Save.
+            Size and color preview on the node immediately.
           </li>
           <li>
             <strong>Close / Save</strong> — Close if nothing changed; Save
-            writes the form. While dirty, Cancel discards and the rest of the UI
-            is locked.
+            writes the form. While dirty, Cancel discards (and reverts the
+            preview) and the rest of the UI is locked.
           </li>
           <li>
             <strong>Delete</strong> — in the edit panel when there are no
@@ -130,7 +130,7 @@ export default function HelpTab() {
               fontSize="8"
               fill="currentColor"
             >
-              Edit node
+              Edit form
             </text>
             <text
               x="110"
@@ -139,7 +139,7 @@ export default function HelpTab() {
               fontSize="9"
               fill="currentColor"
             >
-              2× click
+              1× click
             </text>
             <path d="M160 38 H200" stroke="currentColor" strokeWidth="1.6" />
             <polygon points="200,38 193,34 193,42" fill="currentColor" />
@@ -154,8 +154,8 @@ export default function HelpTab() {
             </text>
           </svg>
           <figcaption>
-            Select with one click. Double-click a node or connection to open its
-            edit panel.
+            Select a node to open its preview and the bottom-left edit form.
+            Double-click a connection to edit it.
           </figcaption>
         </figure>
       </section>
@@ -266,24 +266,23 @@ export default function HelpTab() {
       </section>
 
       <section>
-        <h2>Filters and grouping</h2>
+        <h2>Search and filters</h2>
         <p>
-          The Filter tab searches titles and descriptions, then narrows by
-          level, type, and color. Color filters match the current grouping (by
-          level, type, or custom).
+          The panel at the top left searches titles and descriptions, then
+          narrows by color. None selected means no color constraint.
         </p>
         <ul className="mb-2.5 ml-0 list-disc pl-4 text-xs leading-normal text-[var(--muted)] [&_li]:mb-1.5 [&_strong]:text-[var(--text)]">
           <li>
-            Click chips or swatches to toggle. None selected means no
-            constraint.
+            Click a color swatch to toggle. Click a search hit to focus that
+            node.
           </li>
           <li>
             <strong>Hide non-matches</strong> removes dimmed nodes instead of
             fading them.
           </li>
           <li>
-            <strong>Enlarge</strong> scales labels and dots.{" "}
-            <strong>Cards</strong> (bottom right) shows cards when you zoom in.
+            <strong>Enlarge</strong> in the left panel scales labels and dots.{" "}
+            <strong>Cards</strong> under the left panel shows cards when you zoom in.
           </li>
         </ul>
       </section>
@@ -327,9 +326,6 @@ export default function HelpTab() {
           <li>
             <strong>Export / Import</strong> JSON to move a graph between
             machines.
-          </li>
-          <li>
-            <strong>Sample</strong> reloads the PRIME PM activity workflow tree.
           </li>
         </ul>
       </section>

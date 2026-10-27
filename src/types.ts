@@ -46,8 +46,6 @@ export interface GraphDocument {
   settings: GraphSettings;
 }
 
-export const NODE_KINDS: NodeKind[] = ["concept", "category", "task", "info"];
-
 export const DEFAULT_SETTINGS: GraphSettings = {
   physics: true,
   charge: -220,

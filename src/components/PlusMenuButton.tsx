@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { ArrowStyle } from "../types";
-import { cx, plusMenuBox, toolBtn, toolOn } from "../styles";
+import { cx, plusMenuBox, toolBtn, toolBtnOn } from "../styles";
 import PlusMenu from "./PlusMenu";
 
 type Props = {
@@ -31,9 +31,8 @@ export default function PlusMenuButton({ open, armed, onOpen, onAddNode, onLink 
       <button
         type="button"
         className={cx(
-          toolBtn,
+          open || armed ? toolBtnOn : toolBtn,
           "h-9 w-9 rounded-[10px] p-0 text-[22px] leading-none font-medium",
-          (open || armed) && toolOn,
         )}
         aria-label="Add"
         aria-expanded={open}
