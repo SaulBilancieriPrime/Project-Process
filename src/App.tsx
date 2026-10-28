@@ -29,7 +29,7 @@ import { nodeColor } from "./graph/colors";
 import type { WorkflowStatus } from "./graph/workflowStatus";
 import { addChild, addLink, blankNode, deleteNode, insertNodeBetween } from "./graph/ops";
 import { mergeViewSettings } from "./graph/viewSettings";
-import { degToRad, rotatePoint } from "./graph/viewRotation";
+import { degToRad, rotatePoint, viewCoverOffset } from "./graph/viewRotation";
 import { isFiltered, linkEnds } from "./graph/visibility";
 import {
   downloadJson,
@@ -862,7 +862,8 @@ export default function App() {
 
   function screenOf(x: number, y: number) {
     const s = graphRef.current?.graph2ScreenCoords(x, y) ?? { x: 80, y: 80 };
-    const rotated = rotatePoint(s.x, s.y, size.w / 2, size.h / 2, degToRad(viewRotation));
+    const { ox, oy } = viewCoverOffset(size.w, size.h);
+    const rotated = rotatePoint(s.x + ox, s.y + oy, size.w / 2, size.h / 2, degToRad(viewRotation));
     const rect = stageRef.current?.getBoundingClientRect();
     return { left: (rect?.left ?? 0) + rotated.x, top: (rect?.top ?? 0) + rotated.y };
   }

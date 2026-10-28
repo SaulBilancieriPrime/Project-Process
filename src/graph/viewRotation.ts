@@ -15,3 +15,9 @@ export function rotatePoint(x: number, y: number, cx: number, cy: number, radian
   const sin = Math.sin(radians);
   return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos };
 }
+
+/** Square large enough that a viewport rotation still covers the stage. */
+export function viewCoverOffset(width: number, height: number) {
+  const cover = Math.ceil(Math.hypot(width, height));
+  return { cover, ox: (width - cover) / 2, oy: (height - cover) / 2 };
+}

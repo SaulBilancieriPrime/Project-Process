@@ -6,7 +6,7 @@ import { personStyle } from "../data/personStyle";
 import { NODE_FILL, graphTheme, nodeColor, sizeForLevel, withAlpha } from "../graph/colors";
 import { employeeInitials } from "../graph/employee";
 import { findOriginId, hopDistances, hopGlow, pulseAmountOnLink, pulseFront, pulseHalo, pulseStroke } from "../graph/pulse";
-import { rotatePoint } from "../graph/viewRotation";
+import { rotatePoint, viewCoverOffset } from "../graph/viewRotation";
 import { isFiltered, linkEnds } from "../graph/visibility";
 import { STATUS_COLORS, type WorkflowStatus } from "../graph/workflowStatus";
 import { loadPersonPhoto } from "../lib/personPhoto";
@@ -303,6 +303,7 @@ export default function GraphCanvas({
   const lastClick = useRef<{ key: string; t: number } | null>(null);
   const cursorGraph = useRef<{ x: number; y: number } | null>(null);
   const hostRef = useRef<HTMLDivElement>(null);
+  const labelCanvasRef = useRef<HTMLCanvasElement>(null);
   const spaceHeld = useRef(false);
   const skipBg = useRef(false);
   const fgContextHandled = useRef(false);
@@ -439,7 +440,13 @@ export default function GraphCanvas({
     const sy = clientY - (rect?.top ?? 0);
     const cx = (rect?.width ?? width) / 2;
     const cy = (rect?.height ?? height) / 2;
-    return rotatePoint(sx, sy, cx, cy, -rotationRef.current);
+    const { ox, oy } = viewCoverOffset(width, height);
+    const rotated = rotatePoint(sx, sy, cx, cy, -rotationRef.current);
+    return { x: rotated.x - ox, y: rotated.y - oy };
+  }
+
+  function overlayLabels() {
+    return uprightText && Math.abs(rotationRef.current) > 1e-6;
   }
 
   function graphAtClient(clientX: number, clientY: number) {
@@ -465,6 +472,108 @@ export default function GraphCanvas({
       return data?.nodes ?? graphData.nodes;
     } catch {
       return graphData.nodes;
+    }
+  }
+
+  function paintUprightLabels(globalScale: number) {
+    const canvas = labelCanvasRef.current;
+    if (!canvas) return;
+    if (canvas.width !== width) canvas.width = width;
+    if (canvas.height !== height) canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, width, height);
+    if (!overlayLabels() || settings.showText === false) return;
+    const fg = graphRef.current;
+    if (!fg?.graph2ScreenCoords) return;
+    const { ox, oy } = viewCoverOffset(width, height);
+    const nodeScale = viewScale(settings.enlarge);
+    const cardScale = viewScale(settings.cardScale, nodeScale);
+    const textScale = viewScale(settings.textScale, nodeScale);
+    const asCard = cardsAtZoom(Boolean(settings.cardInfo), globalScale);
+
+    const screenOfNode = (x: number, y: number) => {
+      const s = fg.graph2ScreenCoords(x, y);
+      return rotatePoint(s.x + ox, s.y + oy, width / 2, height / 2, rotationRef.current);
+    };
+
+    for (const node of liveEngineNodes()) {
+      if (node.x == null || node.y == null) continue;
+      const matched = isFiltered(node, search, settings.colorBy, filterOptions);
+      const dim = !matched;
+      const selected = selectedSet.has(node.id);
+      const hovered = node.id === hoveredId;
+      const connecting = node.id === connectFrom;
+      const r = dotRadius(node, globalScale, nodeScale);
+      const p = screenOfNode(node.x, node.y);
+      ctx.save();
+      ctx.globalAlpha = dim ? 0.16 : 1;
+      if (asCard) {
+        const { w, h } = cardBox(node, globalScale, cardScale);
+        const sw = w * globalScale;
+        const sh = h * globalScale;
+        const rx = p.x - sw / 2;
+        const ry = p.y + r * globalScale + 6;
+        const rad = 7;
+        ctx.fillStyle = palette.card;
+        ctx.strokeStyle = selected || connecting ? palette.ring : withAlpha(nodeColor(node, settings.colorBy), 0.85);
+        ctx.lineWidth = selected ? 1.5 : 1;
+        ctx.beginPath();
+        ctx.moveTo(rx + rad, ry);
+        ctx.arcTo(rx + sw, ry, rx + sw, ry + sh, rad);
+        ctx.arcTo(rx + sw, ry + sh, rx, ry + sh, rad);
+        ctx.arcTo(rx, ry + sh, rx, ry, rad);
+        ctx.arcTo(rx, ry, rx + sw, ry, rad);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.rect(rx, ry, sw, sh);
+        ctx.clip();
+        const titleSize = 12 * textScale;
+        ctx.fillStyle = palette.cardText;
+        ctx.font = `600 ${titleSize}px "Segoe UI", sans-serif`;
+        ctx.textAlign = "left";
+        ctx.textBaseline = "top";
+        ctx.fillText(wrapText(ctx, node.title, sw - 16, 1)[0] ?? node.title, rx + 8, ry + 8);
+        if (node.description) {
+          const bodySize = 10.5 * textScale;
+          ctx.fillStyle = palette.cardMuted;
+          ctx.font = `${bodySize}px "Segoe UI", sans-serif`;
+          wrapText(ctx, node.description, sw - 16, 2).forEach((line, i) => {
+            ctx.fillText(line, rx + 8, ry + 26 + i * (bodySize + 3));
+          });
+        }
+      } else if (shouldLabel(node, globalScale, selected, hovered, Boolean(search && matched))) {
+        ctx.globalAlpha = (dim ? 0.16 : 1) * (selected || hovered || node.level <= 1 ? 1 : smoothstep(0.28, 0.7, globalScale || 0.3));
+        const fontPx = 11 * textScale;
+        const rScreen = r * globalScale;
+        ctx.font = `${node.level === 0 ? 700 : 600} ${fontPx}px "Segoe UI", sans-serif`;
+        ctx.fillStyle = dim ? palette.labelDim : palette.label;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        wrapText(ctx, node.title, 148 * textScale, 2).forEach((line, i) => {
+          ctx.fillText(line, p.x, p.y + rScreen + 4 + i * (fontPx + 2));
+        });
+      }
+      ctx.restore();
+    }
+
+    const cur = cursorGraph.current;
+    if (placeArmed && cur) {
+      const p = screenOfNode(cur.x, cur.y);
+      const src = placeFrom ? graphData.nodes.find((n) => n.id === placeFrom) : null;
+      const ghostLevel = src ? src.level + 1 : 2;
+      const ghostSize = placeSize ?? sizeForLevel(ghostLevel);
+      const r = dotRadius({ size: ghostSize, level: ghostLevel } as GraphNode, globalScale, nodeScale);
+      ctx.save();
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = palette.label;
+      ctx.font = '600 11px "Segoe UI", sans-serif';
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.fillText("New idea", p.x, p.y + r * globalScale + 4);
+      ctx.restore();
     }
   }
 
@@ -652,6 +761,8 @@ export default function GraphCanvas({
     return () => host.removeEventListener("wheel", trapWheel, { capture: true });
   }, [graphRef, onZoom]);
 
+  const cover = viewCoverOffset(width, height);
+
   return (
     <div
       ref={hostRef}
@@ -819,13 +930,19 @@ export default function GraphCanvas({
       }}
     >
     <div
-      className="graph-spin pointer-events-none absolute inset-0 origin-center will-change-transform"
-      style={{ transform: `rotate(${rotation}rad)` }}
+      className="graph-spin pointer-events-none absolute origin-center"
+      style={{
+        transform: `rotate(${rotation}rad)`,
+        left: cover.ox,
+        top: cover.oy,
+        width: cover.cover,
+        height: cover.cover,
+      }}
     >
     <ForceGraph2D<GraphNode, GraphLink>
       ref={graphRef as never}
-      width={width}
-      height={height}
+      width={cover.cover}
+      height={cover.cover}
       graphData={graphData}
       backgroundColor={palette.bg}
       nodeId="id"
@@ -1052,7 +1169,9 @@ export default function GraphCanvas({
           ctx.stroke();
         }
 
-        if (asCard) {
+        if (overlayLabels()) {
+          /* labels/cards paint on the unrotated overlay so they stay sharp */
+        } else if (asCard) {
           const { w, h } = cardBox(node, globalScale, cardScale);
           ctx.globalAlpha = alpha;
           inScreenSpace(ctx, x, y, globalScale, (k) => {
@@ -1157,7 +1276,10 @@ export default function GraphCanvas({
           }
         }
         const cur = cursorGraph.current;
-        if (!cur) return;
+        if (!cur) {
+          paintUprightLabels(globalScale);
+          return;
+        }
         if (placeArmed) {
           const src = placeFrom ? graphData.nodes.find((n) => n.id === placeFrom) : null;
           const ghostLevel = src ? src.level + 1 : 2;
@@ -1192,16 +1314,24 @@ export default function GraphCanvas({
           });
           ctx.fillStyle = palette.label;
           ctx.globalAlpha = 0.9;
-          inScreenSpace(ctx, cur.x, cur.y, globalScale, (k) => {
-            ctx.font = "600 11px \"Segoe UI\", sans-serif";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "top";
-            ctx.fillText("New idea", 0, r * k + 4);
-          }, labelUnrotate());
+          if (!overlayLabels()) {
+            ctx.fillStyle = palette.label;
+            ctx.globalAlpha = 0.9;
+            inScreenSpace(ctx, cur.x, cur.y, globalScale, (k) => {
+              ctx.font = "600 11px \"Segoe UI\", sans-serif";
+              ctx.textAlign = "center";
+              ctx.textBaseline = "top";
+              ctx.fillText("New idea", 0, r * k + 4);
+            });
+          }
           ctx.restore();
+          paintUprightLabels(globalScale);
           return;
         }
-        if (!connectFrom) return;
+        if (!connectFrom) {
+          paintUprightLabels(globalScale);
+          return;
+        }
         const src = graphData.nodes.find((n) => n.id === connectFrom);
         if (!src || src.x == null || src.y == null) return;
         ctx.save();
@@ -1222,9 +1352,11 @@ export default function GraphCanvas({
           drawArrowHead(ctx, cur.x, cur.y, src.x, src.y, head);
         }
         ctx.restore();
+        paintUprightLabels(globalScale);
       }}
     />
     </div>
+    <canvas ref={labelCanvasRef} className="graph-labels pointer-events-none absolute inset-0" width={width} height={height} />
     </div>
   );
 }

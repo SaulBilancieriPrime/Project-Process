@@ -66,6 +66,7 @@ html[data-theme="dark"] {
 
 /* Canvas and JS-hook leftovers that cannot become utilities. */
 .graph-wrap canvas { display: block; background: var(--graph-bg) !important; }
+.graph-wrap canvas.graph-labels { background: transparent !important; }
 .graph-wrap .force-graph-container,
 .graph-host .force-graph-container {
   width: 100% !important;
