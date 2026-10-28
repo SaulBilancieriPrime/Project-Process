@@ -10,8 +10,12 @@
     "dev": "vite dev --port 5173",
     "generate-routes": "tsr generate",
     "build": "vite build",
+    "start": "node .output/server/index.mjs",
     "preview": "vite preview",
     "sql:setup": "python scripts/projectprocess_sql.py"
+  },
+  "engines": {
+    "node": ">=22"
   },
   "dependencies": {
     "@azure/identity": "^4.14.0",
@@ -37,6 +41,7 @@
   },
   "devDependencies": {
     "@tanstack/devtools-vite": "0.8.5",
+    "nitro": "^3.0.260903-beta",
     "@tanstack/intent": "0.5.6",
     "@tanstack/router-cli": "^1.132.0",
     "@types/d3-force": "^3.0.10",
