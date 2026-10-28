@@ -212,7 +212,7 @@ export default function HelpTab() {
           <Card icon={<IcoFilter />} title="Search & filter" body="Search titles, or tap status pills and people in the left rail." />
           <Card icon={<IcoStatus />} title="Status" body="Incomplete, in progress, and done — shown as the ring on each ball." />
           <Card icon={<IcoPeople />} title="Assign people" body="Pick a person on a node. Their photo sits on the ball." />
-          <Card icon={<IcoView />} title="View" body="Fit, Reorg, Physics, Text, Cards, and Pulse live under View." />
+          <Card icon={<IcoView />} title="View" body="Fit, Reorg, Physics, Text, Cards, and Pulse live under View. Those look and force choices stay on this device — they do not go into History or the shared map." />
         </div>
       </section>
 

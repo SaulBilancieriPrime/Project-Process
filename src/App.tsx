@@ -14,28 +14,33 @@ import LinkContextMenu from "./components/LinkContextMenu";
 import NodeContextMenu from "./components/NodeContextMenu";
 import NodePreviewPanel from "./components/NodePreviewPanel";
 import SelectionPanel from "./components/SelectionPanel";
+import SyncChangesModal from "./components/SyncChangesModal";
 import {
   ACTION_COALESCE_MS,
   actionKindFromChanges,
   cloneSnapshot,
   diffSnapshots,
   mergeAction,
+  type ChangeItem,
   type HistoryAction,
 } from "./graph/history";
 import { fetchSharedMap, postMapTx, txFromSnapshots, type MapTx } from "./lib/mapSync";
 import { nodeColor } from "./graph/colors";
 import type { WorkflowStatus } from "./graph/workflowStatus";
 import { addChild, addLink, blankNode, deleteNode, insertNodeBetween } from "./graph/ops";
+import { mergeViewSettings } from "./graph/viewSettings";
 import { degToRad, rotatePoint } from "./graph/viewRotation";
 import { isFiltered, linkEnds } from "./graph/visibility";
 import {
   downloadJson,
   loadDocument,
   loadViewRotation,
+  loadViewSettings,
   readJsonFile,
   newId,
   saveDocument,
   saveViewRotation,
+  saveViewSettings,
 } from "./storage";
 import { patchUi, showToast as pushToast, toggleHistory, toggleInfo, uiStore } from "./store/ui";
 import { ctxBox, cx } from "./styles";
@@ -54,7 +59,9 @@ export default function App() {
   const initial = useMemo(() => loadDocument(), []);
   const [nodes, setNodes] = useState<GraphNode[]>(initial.nodes);
   const [links, setLinks] = useState<GraphLink[]>(initial.links);
-  const [settings, setSettings] = useState<GraphSettings>(initial.settings);
+  const [settings, setSettings] = useState<GraphSettings>(() =>
+    mergeViewSettings(initial.settings, loadViewSettings(initial.settings)),
+  );
   const theme = useStore(uiStore, (s) => s.theme);
   const historyOpen = useStore(uiStore, (s) => s.historyOpen);
   const infoOpen = useStore(uiStore, (s) => s.infoOpen);
@@ -73,9 +80,12 @@ export default function App() {
   const [employeeFilter, setEmployeeFilter] = useState<string | null>(null);
   const hideFiltered = Boolean(search.trim()) || statusFilters.length > 0 || employeeFilter != null;
   const [liveStatus, setLiveStatus] = useState<"offline" | "live" | "syncing">("offline");
+  const [syncLocked, setSyncLocked] = useState(false);
+  const [syncChanges, setSyncChanges] = useState<ChangeItem[]>([]);
   const [size, setSize] = useState({ w: 1200, h: 800 });
   const [zoom, setZoom] = useState(1);
   const [viewRotation, setViewRotation] = useState(loadViewRotation);
+  const [viewSpinning, setViewSpinning] = useState(false);
 
   const stageRef = useRef<HTMLDivElement>(null);
   const graphRef = useRef<GraphHandle | undefined>(undefined);
@@ -85,6 +95,9 @@ export default function App() {
   const revisionRef = useRef(0);
   const hydratedRef = useRef(false);
   const syncingRef = useRef(false);
+  const syncLockedRef = useRef(false);
+  const graphSnapRef = useRef({ nodes, links, settings });
+  graphSnapRef.current = { nodes, links, settings };
   const offlineToastRef = useRef(false);
   const lastPosHash = useRef("");
   const fittedOnce = useRef(false);
@@ -126,6 +139,10 @@ export default function App() {
   useEffect(() => {
     saveViewRotation(viewRotation);
   }, [viewRotation]);
+
+  useEffect(() => {
+    saveViewSettings(settings);
+  }, [settings]);
 
   useEffect(() => {
     const el = stageRef.current;
@@ -262,17 +279,46 @@ export default function App() {
     pushToast(msg);
   }, []);
 
-  const persistTx = useCallback((tx: MapTx | null) => {
+  const persistTx = useCallback((tx: MapTx | null, opts?: { silent?: boolean; expect?: { nodes: GraphNode[]; links: GraphLink[]; settings: GraphSettings } }) => {
     if (!tx || !hydratedRef.current) return;
     persistChain.current = persistChain.current.then(async () => {
+      const lockCanvas = !opts?.silent;
       syncingRef.current = true;
       setLiveStatus("syncing");
+      if (lockCanvas) {
+        syncLockedRef.current = true;
+        setSyncLocked(true);
+      }
       try {
         const result = await postMapTx(tx);
         if (result.ok) {
           revisionRef.current = result.revision;
-          setLiveStatus("live");
           offlineToastRef.current = false;
+          if (lockCanvas) {
+            const map = await fetchSharedMap();
+            if (map.ok && !map.unchanged) {
+              const before = opts?.expect ?? graphSnapRef.current;
+              const appliedSettings = mergeViewSettings(map.settings, before.settings);
+              const incoming = diffSnapshots(before, { ...map, settings: appliedSettings });
+              setNodes(map.nodes);
+              setLinks(map.links);
+              setSettings(appliedSettings);
+              revisionRef.current = map.revision;
+              lastPosHash.current = JSON.stringify(map.nodes.map((n) => [n.id, n.x, n.y, n.fx, n.fy]));
+              saveDocument(map);
+              const live = liveGraphNodes();
+              for (const n of live) {
+                const match = map.nodes.find((item) => item.id === n.id);
+                if (!match) continue;
+                n.x = match.x;
+                n.y = match.y;
+                n.fx = match.fx;
+                n.fy = match.fy;
+              }
+              if (incoming.length) setSyncChanges(incoming);
+            }
+          }
+          setLiveStatus("live");
           return;
         }
         setLiveStatus("offline");
@@ -284,6 +330,10 @@ export default function App() {
         setLiveStatus("offline");
       } finally {
         syncingRef.current = false;
+        if (lockCanvas) {
+          syncLockedRef.current = false;
+          setSyncLocked(false);
+        }
       }
     });
   }, [showToast]);
@@ -293,7 +343,7 @@ export default function App() {
     const hash = JSON.stringify(moved.map((n) => [n.id, n.x, n.y, n.fx, n.fy]));
     if (hash === lastPosHash.current) return;
     lastPosHash.current = hash;
-    persistTx({ label: "Updated positions", upsertNodes: moved });
+    persistTx({ label: "Updated positions", upsertNodes: moved }, { silent: true });
   }, [persistTx]);
 
   useEffect(() => {
@@ -308,7 +358,7 @@ export default function App() {
       if (map.unchanged) return;
       setNodes(map.nodes);
       setLinks(map.links);
-      setSettings(map.settings);
+      setSettings(mergeViewSettings(map.settings, loadViewSettings(map.settings)));
       setActions([]);
       setFuture([]);
       revisionRef.current = map.revision;
@@ -325,17 +375,27 @@ export default function App() {
 
   useEffect(() => {
     const timer = window.setInterval(async () => {
-      if (document.hidden || syncingRef.current || !hydratedRef.current) return;
+      if (document.hidden || syncingRef.current || syncLockedRef.current || !hydratedRef.current) return;
       const map = await fetchSharedMap(revisionRef.current);
       if (!map.ok) {
         setLiveStatus("offline");
         return;
       }
-      setLiveStatus("live");
-      if (map.unchanged) return;
+      if (map.unchanged) {
+        setLiveStatus("live");
+        return;
+      }
+      const appliedSettings = mergeViewSettings(map.settings, graphSnapRef.current.settings);
+      const incoming = diffSnapshots(graphSnapRef.current, { ...map, settings: appliedSettings });
+      if (incoming.length) {
+        syncingRef.current = true;
+        syncLockedRef.current = true;
+        setSyncLocked(true);
+        setLiveStatus("syncing");
+      }
       setNodes(map.nodes);
       setLinks(map.links);
-      setSettings(map.settings);
+      setSettings(appliedSettings);
       revisionRef.current = map.revision;
       lastPosHash.current = JSON.stringify(map.nodes.map((n) => [n.id, n.x, n.y, n.fx, n.fy]));
       saveDocument(map);
@@ -348,6 +408,13 @@ export default function App() {
         n.fx = match.fx;
         n.fy = match.fy;
       }
+      if (incoming.length) {
+        setSyncChanges(incoming);
+        syncingRef.current = false;
+        syncLockedRef.current = false;
+        setSyncLocked(false);
+      }
+      setLiveStatus("live");
     }, 2000);
     return () => window.clearInterval(timer);
   }, []);
@@ -400,6 +467,7 @@ export default function App() {
     next: { nodes?: GraphNode[]; links?: GraphLink[]; settings?: GraphSettings },
     coalesceKey?: string,
   ) {
+    if (syncLockedRef.current) return;
     const afterNodes = next.nodes ?? nodes;
     const afterLinks = next.links ?? links;
     const afterSettings = next.settings ?? settings;
@@ -408,9 +476,9 @@ export default function App() {
     const changes = diffSnapshots(before, after);
     if (next.nodes) setNodes(afterNodes);
     if (next.links) setLinks(afterLinks);
-    if (next.settings) setSettings(afterSettings);
+    if (next.settings) setSettings(mergeViewSettings(afterSettings, settings));
     if (!changes.length) return;
-    persistTx(txFromSnapshots(before, after, label));
+    persistTx(txFromSnapshots(before, after, label), { expect: after });
     setFuture([]);
     setActions((prev) => {
       const last = prev[prev.length - 1];
@@ -438,10 +506,10 @@ export default function App() {
   }
 
   function restoreSnapshot(snap: { nodes: GraphNode[]; links: GraphLink[]; settings: GraphSettings }, persistLabel?: string) {
-    if (persistLabel) persistTx(txFromSnapshots({ nodes, links, settings }, snap, persistLabel));
+    if (persistLabel) persistTx(txFromSnapshots({ nodes, links, settings }, snap, persistLabel), { expect: snap });
     setNodes(snap.nodes);
     setLinks(snap.links);
-    setSettings(snap.settings);
+    setSettings(mergeViewSettings(snap.settings, settings));
     setEditingId((cur) => (cur && snap.nodes.some((n) => n.id === cur) ? cur : null));
     setEditingLinkId((cur) => (cur && snap.links.some((l) => l.id === cur) ? cur : null));
     setSelectedIds((prev) => prev.filter((item) => snap.nodes.some((n) => n.id === item)));
@@ -490,7 +558,7 @@ export default function App() {
   }
 
   function patchSettings(patch: Partial<GraphSettings>) {
-    applyGraph("Changed settings", { settings: { ...settings, ...patch } }, "settings");
+    setSettings(mergeViewSettings(settings, patch));
   }
 
   useEffect(() => {
@@ -570,7 +638,7 @@ export default function App() {
   }
 
   function startPlace(parentId?: string, size?: number) {
-    if (editLocked) return;
+    if (editLocked || syncLockedRef.current) return;
     setConnect(null);
     setMenu(null);
     setEditingId(null);
@@ -583,7 +651,7 @@ export default function App() {
   }
 
   function startLink(arrows: ArrowStyle, from?: string) {
-    if (editLocked) return;
+    if (editLocked || syncLockedRef.current) return;
     setPlacing(null);
     setMenu(null);
     setEditingId(null);
@@ -781,7 +849,7 @@ export default function App() {
   }, [nodes.length, size.w, size.h, fitGraph]);
 
   function reheat() {
-    applyGraph("Reorganized layout", { settings: { ...settings, physics: true } }, "settings");
+    setSettings(mergeViewSettings(settings, { physics: true }));
     window.setTimeout(() => {
       try {
         applyPhysicsFreeze(true);
@@ -920,17 +988,13 @@ export default function App() {
               onTogglePhysics={() => {
                 const next = !settings.physics;
                 applyPhysicsFreeze(next);
-                applyGraph(next ? "Turned physics on" : "Turned physics off", { settings: { ...settings, physics: next } });
+                setSettings(mergeViewSettings(settings, { physics: next }));
                 window.setTimeout(() => {
                   applyPhysicsFreeze(next);
                   if (next) graphRef.current?.d3ReheatSimulation();
                 }, 40);
               }}
-              onToggleCards={() =>
-                applyGraph(settings.cardInfo ? "Hid cards" : "Showed cards", {
-                  settings: { ...settings, cardInfo: !settings.cardInfo },
-                })
-              }
+              onToggleCards={() => setSettings(mergeViewSettings(settings, { cardInfo: !settings.cardInfo }))}
               onNodeSave={(patch) => {
                 if (editing) updateNode(editing.id, patch);
               }}
@@ -977,6 +1041,7 @@ export default function App() {
             hideFiltered={hideFiltered}
             theme={theme}
             rotation={degToRad(viewRotation)}
+            uprightText={!viewSpinning}
             width={size.w}
             height={size.h}
             graphRef={graphRef}
@@ -1133,7 +1198,20 @@ export default function App() {
           />
         </div>
 
-        <ViewCompass degrees={viewRotation} onChange={setViewRotation} />
+        <ViewCompass degrees={viewRotation} onChange={setViewRotation} onHoldChange={setViewSpinning} />
+
+        {syncLocked && (
+          <div
+            className="absolute inset-0 z-[30] flex items-center justify-center bg-[rgba(18,20,24,0.58)] backdrop-grayscale"
+            role="status"
+            aria-live="polite"
+            aria-label="Syncing map"
+          >
+            <div className="rounded-full border border-[var(--line)] bg-[var(--card)] px-3 py-1.5 text-xs font-semibold text-[var(--text)] shadow-[var(--shadow)]">
+              Syncing map…
+            </div>
+          </div>
+        )}
 
         {(placing || connect || selectedIds.length > 1) && (
           <div className="absolute top-3 left-1/2 z-[8] -translate-x-1/2 rounded-full bg-[rgba(27,58,107,0.92)] px-3 py-1.5 text-xs font-bold tracking-wide text-[#f3f2f1]">
@@ -1257,6 +1335,8 @@ export default function App() {
         />
       )}
 
+      <SyncChangesModal changes={syncChanges} onClose={() => setSyncChanges([])} />
+
       <HistoryPanel
         open={historyOpen}
         history={actions}
@@ -1280,11 +1360,11 @@ export default function App() {
             const doc = await readJsonFile(file);
             setNodes(doc.nodes);
             setLinks(doc.links);
-            setSettings(doc.settings);
+            setSettings(mergeViewSettings(doc.settings, doc.settings));
             setActions([]);
             setFuture([]);
             fittedOnce.current = false;
-            persistTx({ label: "Imported graph", replace: doc });
+            persistTx({ label: "Imported graph", replace: doc }, { expect: doc });
             showToast("Imported graph");
           } catch {
             showToast("Could not import that file");

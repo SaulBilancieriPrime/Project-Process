@@ -1,3 +1,4 @@
+import { sharedSettingsChanged } from "../graph/viewSettings";
 import { parseGraphDocument, type GraphDocument, type GraphLink, type GraphNode, type GraphSettings } from "../schema/graph";
 
 export type SharedMap = GraphDocument & { revision: number };
@@ -84,7 +85,7 @@ export function txFromSnapshots(
     return !prev || JSON.stringify(prev) !== JSON.stringify(link);
   });
   const deleteLinkIds = before.links.filter((l) => !afterLinks.has(l.id)).map((l) => l.id);
-  const settingsChanged = JSON.stringify(before.settings) !== JSON.stringify(after.settings);
+  const settingsChanged = sharedSettingsChanged(before.settings, after.settings);
 
   if (!upsertNodes.length && !deleteNodeIds.length && !upsertLinks.length && !deleteLinkIds.length && !settingsChanged) {
     return null;

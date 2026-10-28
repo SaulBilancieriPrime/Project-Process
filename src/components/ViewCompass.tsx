@@ -4,6 +4,7 @@ import { normalizeDeg } from "../graph/viewRotation";
 type Props = {
   degrees: number;
   onChange: (degrees: number) => void;
+  onHoldChange?: (holding: boolean) => void;
 };
 
 function angleAt(el: HTMLElement, clientX: number, clientY: number) {
@@ -18,7 +19,7 @@ function unwrapDelta(from: number, to: number) {
   return d;
 }
 
-export default function ViewCompass({ degrees, onChange }: Props) {
+export default function ViewCompass({ degrees, onChange, onHoldChange }: Props) {
   const drag = useRef<{
     pointer: number;
     last: number;
@@ -32,6 +33,7 @@ export default function ViewCompass({ degrees, onChange }: Props) {
   function endHold() {
     drag.current = null;
     setHolding(false);
+    onHoldChange?.(false);
   }
 
   return (
@@ -53,6 +55,7 @@ export default function ViewCompass({ degrees, onChange }: Props) {
           /* pointer may already be gone */
         }
         setHolding(true);
+        onHoldChange?.(true);
         drag.current = {
           pointer: e.pointerId,
           last: 0,

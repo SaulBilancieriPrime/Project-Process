@@ -33,6 +33,7 @@ type Props = {
   hideFiltered: boolean;
   theme: "light" | "dark";
   rotation?: number;
+  uprightText?: boolean;
   width: number;
   height: number;
   onSelect: (id: string | null, additive?: boolean) => void;
@@ -106,10 +107,12 @@ function inScreenSpace(
   y: number,
   globalScale: number,
   paint: (scale: number) => void,
+  unrotate = 0,
 ) {
   const k = Math.max(globalScale, 1e-4);
   ctx.save();
   ctx.translate(x, y);
+  if (unrotate) ctx.rotate(unrotate);
   ctx.scale(1 / k, 1 / k);
   paint(k);
   ctx.restore();
@@ -147,9 +150,10 @@ function paintNodeDisc(
     photo?: HTMLImageElement;
     initials?: string;
     unassigned?: boolean;
+    unrotate?: number;
   },
 ) {
-  const { x, y, r, fill, border, globalScale, selected, hovered, photo, initials, unassigned } = args;
+  const { x, y, r, fill, border, globalScale, selected, hovered, photo, initials, unassigned, unrotate = 0 } = args;
   const statusW = (selected || hovered ? 2.8 : 2.2) / globalScale;
   const inkW = Math.max(1.05 / globalScale, r * 0.08);
   const innerR = Math.max(r * 0.62, r - statusW - inkW);
@@ -180,7 +184,7 @@ function paintNodeDisc(
     } else if (unassigned) {
       drawUnassignedIcon(ctx, 0, 0, face);
     }
-  });
+  }, unrotate);
 
   ctx.beginPath();
   ctx.arc(x, y, innerR, 0, Math.PI * 2);
@@ -276,6 +280,7 @@ export default function GraphCanvas({
   hideFiltered,
   theme,
   rotation = 0,
+  uprightText = true,
   width,
   height,
   onSelect,
@@ -313,7 +318,7 @@ export default function GraphCanvas({
   rotationRef.current = rotation;
   useEffect(() => {
     graphRef.current?.resumeAnimation?.();
-  }, [graphRef, rotation]);
+  }, [graphRef, rotation, uprightText]);
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const palette = graphTheme(theme);
 
@@ -448,6 +453,10 @@ export default function GraphCanvas({
     return typeof k === "number" && k > 0 ? k : 1;
   }
 
+  function labelUnrotate() {
+    return uprightText && Math.abs(rotationRef.current) > 1e-6 ? -rotationRef.current : 0;
+  }
+
   function liveEngineNodes(): GraphNode[] {
     const fg = graphRef.current as (GraphHandle & { graphData?: unknown }) | undefined;
     const raw = fg?.graphData;
@@ -477,9 +486,14 @@ export default function GraphCanvas({
       }
       if (cards) {
         const box = cardBox(n, k, cardScale);
-        const rx = n.x - box.w / 2;
-        const ry = n.y + r - 10 / k + 6 / k;
-        if (g.x >= rx && g.x <= rx + box.w && g.y >= ry && g.y <= ry + box.h && d < bestD + box.w) {
+        const discR = dotRadius(n, k, nodeScale);
+        const local = labelUnrotate()
+          ? rotatePoint(g.x, g.y, n.x, n.y, rotationRef.current)
+          : { x: g.x, y: g.y };
+        const lx = local.x - n.x;
+        const ly = local.y - n.y;
+        const top = discR + 6 / k;
+        if (lx >= -box.w / 2 && lx <= box.w / 2 && ly >= top && ly <= top + box.h && d < bestD + box.w) {
           best = n;
           bestD = Math.min(bestD, d);
         }
@@ -979,6 +993,7 @@ export default function GraphCanvas({
         const r = dotRadius(node, globalScale, nodeScale);
         const asCard = cardsAtZoom(Boolean(settings.cardInfo), globalScale);
         const showText = settings.showText !== false;
+        const unrotate = labelUnrotate();
         const alpha = dim ? 0.16 : 1;
         ctx.save();
         ctx.globalAlpha = alpha;
@@ -1002,6 +1017,7 @@ export default function GraphCanvas({
           photo,
           initials: email && !(photo && photo.naturalWidth) ? employeeInitials(node.employee || email) : undefined,
           unassigned: !email,
+          unrotate,
         });
         if (pulseHops) {
           const hop = pulseHops.hops.get(node.id);
@@ -1038,47 +1054,46 @@ export default function GraphCanvas({
 
         if (asCard) {
           const { w, h } = cardBox(node, globalScale, cardScale);
-          const rx = x - w / 2;
-          const ry = y + r + 6 / globalScale;
-          const rad = 7 / globalScale;
           ctx.globalAlpha = alpha;
-          ctx.fillStyle = palette.card;
-          ctx.strokeStyle = selected || connecting ? palette.ring : withAlpha(border, 0.85);
-          ctx.lineWidth = (selected ? 1.5 : 1) / globalScale;
-          ctx.beginPath();
-          ctx.moveTo(rx + rad, ry);
-          ctx.arcTo(rx + w, ry, rx + w, ry + h, rad);
-          ctx.arcTo(rx + w, ry + h, rx, ry + h, rad);
-          ctx.arcTo(rx, ry + h, rx, ry, rad);
-          ctx.arcTo(rx, ry, rx + w, ry, rad);
-          ctx.closePath();
-          ctx.fill();
-          ctx.stroke();
-          if (showText) {
-            inScreenSpace(ctx, rx, ry, globalScale, (k) => {
-              const sw = w * k;
-              const sh = h * k;
-              ctx.beginPath();
-              ctx.rect(0, 0, sw, sh);
-              ctx.clip();
-              const titleSize = 12 * textScale;
-              const bodySize = 10.5 * textScale;
-              ctx.fillStyle = palette.cardText;
-              ctx.font = `600 ${titleSize}px "Segoe UI", sans-serif`;
-              ctx.textAlign = "left";
-              ctx.textBaseline = "top";
-              const title = wrapText(ctx, node.title, sw - 16, 1)[0] ?? node.title;
-              ctx.fillText(title, 8, 8);
-              if (node.description) {
-                ctx.fillStyle = palette.cardMuted;
-                ctx.font = `${bodySize}px "Segoe UI", sans-serif`;
-                const lines = wrapText(ctx, node.description, sw - 16, 2);
-                lines.forEach((line, i) => {
-                  ctx.fillText(line, 8, 26 + i * (bodySize + 3));
-                });
-              }
-            });
-          }
+          inScreenSpace(ctx, x, y, globalScale, (k) => {
+            const sw = w * k;
+            const sh = h * k;
+            const rx = -sw / 2;
+            const ry = r * k + 6;
+            const rad = 7;
+            ctx.fillStyle = palette.card;
+            ctx.strokeStyle = selected || connecting ? palette.ring : withAlpha(border, 0.85);
+            ctx.lineWidth = selected ? 1.5 : 1;
+            ctx.beginPath();
+            ctx.moveTo(rx + rad, ry);
+            ctx.arcTo(rx + sw, ry, rx + sw, ry + sh, rad);
+            ctx.arcTo(rx + sw, ry + sh, rx, ry + sh, rad);
+            ctx.arcTo(rx, ry + sh, rx, ry, rad);
+            ctx.arcTo(rx, ry, rx + sw, ry, rad);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            if (!showText) return;
+            ctx.beginPath();
+            ctx.rect(rx, ry, sw, sh);
+            ctx.clip();
+            const titleSize = 12 * textScale;
+            const bodySize = 10.5 * textScale;
+            ctx.fillStyle = palette.cardText;
+            ctx.font = `600 ${titleSize}px "Segoe UI", sans-serif`;
+            ctx.textAlign = "left";
+            ctx.textBaseline = "top";
+            const title = wrapText(ctx, node.title, sw - 16, 1)[0] ?? node.title;
+            ctx.fillText(title, rx + 8, ry + 8);
+            if (node.description) {
+              ctx.fillStyle = palette.cardMuted;
+              ctx.font = `${bodySize}px "Segoe UI", sans-serif`;
+              const lines = wrapText(ctx, node.description, sw - 16, 2);
+              lines.forEach((line, i) => {
+                ctx.fillText(line, rx + 8, ry + 26 + i * (bodySize + 3));
+              });
+            }
+          }, unrotate);
         } else if (showText && shouldLabel(node, globalScale, selected, hovered, Boolean(search && matched))) {
           ctx.globalAlpha = alpha * smoothstep(0.28, 0.7, globalScale || 0.3);
           if (selected || hovered || node.level <= 1) ctx.globalAlpha = alpha;
@@ -1108,7 +1123,7 @@ export default function GraphCanvas({
                 ctx.fillText(line, 0, rScreen + 4 + i * (fontPx + 2));
               });
             }
-          });
+          }, unrotate);
         }
 
         ctx.restore();
@@ -1173,6 +1188,7 @@ export default function GraphCanvas({
             border: STATUS_COLORS.incomplete,
             globalScale,
             unassigned: true,
+            unrotate: labelUnrotate(),
           });
           ctx.fillStyle = palette.label;
           ctx.globalAlpha = 0.9;
@@ -1181,7 +1197,7 @@ export default function GraphCanvas({
             ctx.textAlign = "center";
             ctx.textBaseline = "top";
             ctx.fillText("New idea", 0, r * k + 4);
-          });
+          }, labelUnrotate());
           ctx.restore();
           return;
         }

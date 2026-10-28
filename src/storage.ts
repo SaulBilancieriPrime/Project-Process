@@ -1,11 +1,14 @@
+import { mergeViewSettings, pickViewSettings } from "./graph/viewSettings";
 import { normalizeDeg } from "./graph/viewRotation";
 import { markAllNodesIncomplete } from "./graph/workflowStatus";
 import { createSampleDocument } from "./sampleData";
 import {
+  DEFAULT_SETTINGS,
   graphDocumentSchema,
   parseGraphDocument,
   themeSchema,
   type GraphDocument,
+  type GraphSettings,
   type Theme,
 } from "./schema";
 
@@ -13,6 +16,7 @@ const KEY = "project-process.graph.v8";
 const LEGACY_GRAPH_KEYS = ["project-process.graph.v7", "project-process.graph.v6"];
 const THEME_KEY = "project-process.theme";
 const VIEW_ROTATION_KEY = "project-process.view-rotation";
+const VIEW_SETTINGS_KEY = "project-process.view-settings";
 
 export function newId() {
   return crypto.randomUUID();
@@ -73,6 +77,24 @@ export function loadViewRotation() {
 export function saveViewRotation(degrees: number) {
   try {
     localStorage.setItem(VIEW_ROTATION_KEY, String(normalizeDeg(degrees)));
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+export function loadViewSettings(fallback?: GraphSettings): GraphSettings | null {
+  try {
+    const raw = localStorage.getItem(VIEW_SETTINGS_KEY);
+    if (!raw) return fallback ? pickViewSettings(fallback) : null;
+    return mergeViewSettings(fallback ?? DEFAULT_SETTINGS, JSON.parse(raw) as Partial<GraphSettings>);
+  } catch {
+    return fallback ? pickViewSettings(fallback) : null;
+  }
+}
+
+export function saveViewSettings(settings: GraphSettings) {
+  try {
+    localStorage.setItem(VIEW_SETTINGS_KEY, JSON.stringify(pickViewSettings(settings)));
   } catch {
     /* ignore quota / private mode */
   }

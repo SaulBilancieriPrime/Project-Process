@@ -169,20 +169,7 @@ export function diffSnapshots(saved: GraphSnapshot, current: GraphSnapshot): Cha
     });
   }
 
-  const settingLabels: [keyof GraphSettings, string][] = [
-    ["physics", "Force layout"],
-    ["radial", "Gravity"],
-    ["cardInfo", "Cards"],
-    ["showText", "Text"],
-    ["pulse", "Pulse"],
-    ["pulseSpeed", "Pulse speed"],
-    ["enlarge", "Node size"],
-    ["textScale", "Text size"],
-    ["cardScale", "Card size"],
-    ["charge", "Charge"],
-    ["linkDistance", "Link distance"],
-    ["collide", "Collision"],
-  ];
+  const settingLabels: [keyof GraphSettings, string][] = [];
   const settingDetails = settingLabels
     .filter(([key]) => saved.settings[key] !== current.settings[key])
     .map(([key, label]) => `${label}: ${String(saved.settings[key])} → ${String(current.settings[key])}`);
