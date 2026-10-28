@@ -3,32 +3,38 @@ import { cx, headerBtn } from "../styles";
 type Props = {
   nodeCount: number;
   linkCount: number;
-  dirty: boolean;
+  liveStatus: "offline" | "live" | "syncing";
   historyCount: number;
   historyOpen: boolean;
   infoOpen: boolean;
   theme: "light" | "dark";
   onTheme: (theme: "light" | "dark") => void;
-  onSave: () => void;
   onExport: () => void;
   onImport: () => void;
   onHistory: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
   onInfo: () => void;
 };
 
 export default function Header({
   nodeCount,
   linkCount,
-  dirty,
+  liveStatus,
   historyCount,
   historyOpen,
   infoOpen,
   theme,
   onTheme,
-  onSave,
   onExport,
   onImport,
   onHistory,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
   onInfo,
 }: Props) {
   return (
@@ -64,15 +70,42 @@ export default function Header({
         </button>
         <button
           type="button"
+          className={cx(headerBtn, "inline-flex size-9 items-center justify-center p-0 disabled:cursor-not-allowed disabled:opacity-40")}
+          aria-label="Undo"
+          title="Undo (Ctrl+Z)"
+          disabled={!canUndo}
+          onClick={onUndo}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+            <path d="M5.5 3.5 L2.5 6.5 L5.5 9.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M2.5 6.5 H9.2 A3.8 3.8 0 0 1 9.2 14.1 H7.4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          className={cx(headerBtn, "inline-flex size-9 items-center justify-center p-0 disabled:cursor-not-allowed disabled:opacity-40")}
+          aria-label="Redo"
+          title="Redo (Ctrl+Y)"
+          disabled={!canRedo}
+          onClick={onRedo}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+            <path d="M10.5 3.5 L13.5 6.5 L10.5 9.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M13.5 6.5 H6.8 A3.8 3.8 0 0 0 6.8 14.1 H8.6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          </svg>
+        </button>
+        <span
           className={cx(
             headerBtn,
-            "border-[var(--omp-teal)] bg-[var(--omp-teal)] font-bold text-white hover:bg-[#0e8f9d]",
-            dirty && "shadow-[0_0_0_2px_#fff_inset]",
+            "pointer-events-none cursor-default font-bold",
+            liveStatus === "live" && "border-[var(--omp-teal)] bg-[var(--omp-teal)] text-white",
+            liveStatus === "syncing" && "border-[var(--omp-teal)] bg-[#0e8f9d] text-white",
+            liveStatus === "offline" && "opacity-80",
           )}
-          onClick={onSave}
+          title={liveStatus === "offline" ? "Azure SQL unavailable — edits stay local" : "Shared map writes to Azure SQL as you edit"}
         >
-          Save
-        </button>
+          {liveStatus === "live" ? "Live" : liveStatus === "syncing" ? "Syncing" : "Offline"}
+        </span>
         <button
           type="button"
           className={cx(headerBtn, "inline-flex size-9 items-center justify-center p-0", infoOpen && "bg-[var(--header-btn-hover)]")}

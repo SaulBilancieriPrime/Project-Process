@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type MutableRefObject } from "react";
+import { handleOverlayWheel } from "../lib/overlayScroll";
 import { chip, chipOn, cx, dangerText, editFloat, fieldLabel, ghostBtn, primaryBtn } from "../styles";
 import type { ArrowStyle, GraphLink, LinkKind } from "../types";
 
@@ -55,7 +56,7 @@ export default function EditLinkPanel({
   }, [draft, onSave, saveRef]);
 
   return (
-    <div className={editFloat} style={style}>
+    <div className={editFloat} style={style} onWheel={handleOverlayWheel}>
       <h3 className="mt-0 mb-2 text-[13px]">Edit connection Modal</h3>
       <label className={fieldLabel}>Arrows</label>
       <div className="flex flex-wrap gap-1.5">

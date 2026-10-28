@@ -1,0 +1,518 @@
+{
+  "settings": {
+    "physics": false,
+    "charge": -420,
+    "linkDistance": 128,
+    "collide": 10,
+    "radial": true,
+    "colorBy": "custom",
+    "cardInfo": false,
+    "enlarge": 1.35
+  },
+  "nodes": [
+    {
+      "id": "prime-pm-root",
+      "title": "PRIME PM",
+      "description": "What are the major workflows?",
+      "level": 0,
+      "parentId": null,
+      "type": "concept",
+      "color": "#f43f5e",
+      "employee": "",
+      "employeeEmail": "",
+      "size": 2.6,
+      "x": -25.297470022553277,
+      "y": 6.600442941257639
+    },
+    {
+      "id": "pursuit",
+      "title": "1.0 Pursuit (Win Work)",
+      "description": "1.0 Pursuit (Win Work)",
+      "level": 1,
+      "parentId": "prime-pm-root",
+      "type": "category",
+      "color": "#f43f5e",
+      "employee": "",
+      "employeeEmail": "",
+      "size": 2.4,
+      "x": -60.952646776138614,
+      "y": -189.9743476976764
+    },
+    {
+      "id": "1.1",
+      "title": "1.1 Pursue Opportunity",
+      "description": "1.1 Pursue Opportunity",
+      "level": 2,
+      "parentId": "pursuit",
+      "type": "task",
+      "color": "#f43f5e",
+      "employee": "",
+      "employeeEmail": "",
+      "size": 1.18,
+      "x": -173.7915390542884,
+      "y": -314.99102387472294
+    },
+    {
+      "id": "1.2",
+      "title": "1.2 Develop Proposal",
+      "description": "1.2 Develop Proposal",
+      "level": 2,
+      "parentId": "pursuit",
+      "type": "task",
+      "color": "#f43f5e",
+      "employee": "",
+      "employeeEmail": "",
+      "size": 1.18,
+      "x": -89.61160961398394,
+      "y": -360.5548552303194
+    },
+    {
+      "id": "1.3",
+      "title": "1.3 Contract & Risk",
+      "description": "1.3 Contract & Risk",
+      "level": 2,
+      "parentId": "pursuit",
+      "type": "task",
+      "color": "#f43f5e",
+      "employee": "",
+      "employeeEmail": "",
+      "size": 1.18,
+      "x": 1.6128770512587085,
+      "y": -348.57336270635295
+    },
+    {
+      "id": "delivery",
+      "title": "2.0 Delivery (Deliver Work)",
+      "description": "2.0 Delivery (Deliver Work)",
+      "level": 1,
+      "parentId": "prime-pm-root",
+      "type": "category",
+      "color": "#f43f5e",
+      "employee": "",
+      "employeeEmail": "",
+      "size": 2.4,
+      "x": 175.21422707365278,
+      "y": -4.853138661352166
+    },
+    {
+      "id": "2.1",
+      "title": "2.1 Set Up Project",
+      "description": "2.1 Set Up Project",
+      "level": 2,
+      "parentId": "delivery",
+      "type": "task",
+      "color": "#f43f5e",
+      "employee": "",
+      "employeeEmail": "",
+      "size": 1.18,
+      "x": 198.67508771064652,
+      "y": -163.71019523083146
+    },
+    {
+      "id": "2.2",
+      "title": "2.2 Plan Project",
+      "description": "2.2 Plan Project",
+      "level": 2,
+      "parentId": "delivery",
+      "type": "task",
+      "color": "#f43f5e",
+      "employee": "",
+      "employeeEmail": "",
+      "size": 1.18,
+      "x": 279.4738843868558,
+      "y": -140.52031487497973
+    },
+    {
+      "id": "2.3",
+      "title": "2.3 Execute Project",
+      "description": "2.3 Execute Project",
+      "level": 2,
+      "parentId": "delivery",
+      "type": "task",
+      "color": "#f43f5e",
+      "employee": "",
+      "employeeEmail": "",
+      "size": 1.18,
+      "x": 330.3848599683174,
+      "y": -86.2794391377689
+    },
+    {
+      "id": "2.4",
+      "title": "2.4 Manage Client",
+      "description": "2.4 Manage Client",
+      "level": 2,
+      "parentId": "delivery",
+      "type": "task",
+      "color": "#f43f5e",
+      "employee": "",
+      "employeeEmail": "",
+      "size": 1.18,
+      "x": 350.1931234095991,
+      "y": -18.66769533681225
+    },
+    {
+      "id": "2.5",
+      "title": "2.5 Manage Quality",
+      "description": "2.5 Manage Quality",
+      "level": 2,
+      "parentId": "delivery",
+      "type": "task",
+      "color": "#f43f5e",
+      "employee": "",
+      "employeeEmail": "",
+      "size": 1.18,
+      "x": 340.47071025575127,
+      "y": 51.60805062019886
+    },
+    {
+      "id": "2.6",
+      "title": "2.6 Manage Changes",
+      "description": "2.6 Manage Changes",
+      "level": 2,
+      "parentId": "delivery",
+      "type": "task",
+      "color": "#f43f5e",
+      "employee": "",
+      "employeeEmail": "",
+      "size": 1.18,
+      "x": 299.7517147743264,
+      "y": 113.16649743364025
+    },
+    {
+      "id": "2.7",
+      "title": "2.7 Close Project",
+      "description": "2.7 Close Project",
+      "level": 2,
+      "parentId": "delivery",
+      "type": "task",
+      "color": "#f43f5e",
+      "employee": "",
+      "employeeEmail": "",
+      "size": 1.18,
+      "x": 222.85511766102775,
+      "y": 148.68503773699376
+    },
+    {
+      "id": "business",
+      "title": "3.0 Business (Run the Business)",
+      "description": "3.0 Business (Run the Business)",
+      "level": 1,
+      "parentId": "prime-pm-root",
+      "type": "category",
+      "color": "#f43f5e",
+      "employee": "",
+      "employeeEmail": "",
+      "size": 1.35,
+      "x": -217.572062926945,
+      "y": 7.849237008626322
+    },
+    {
+      "id": "3.1",
+      "title": "3.1 Manage Financials",
+      "description": "3.1 Manage Financials",
+      "level": 2,
+      "parentId": "business",
+      "type": "task",
+      "color": "#f43f5e",
+      "employee": "",
+      "employeeEmail": "",
+      "size": 1.18,
+      "x": -381.2525171941682,
+      "y": -37.90707801304637
+    },
+    {
+      "id": "3.2",
+      "title": "3.2 Manage Risk",
+      "description": "3.2 Manage Risk",
+      "level": 2,
+      "parentId": "business",
+      "type": "task",
+      "color": "#f43f5e",
+      "employee": "",
+      "employeeEmail": "",
+      "size": 2.4,
+      "x": -329.42893389929816,
+      "y": -113.22402263876452
+    },
+    {
+      "id": "3.3",
+      "title": "3.3 Manage Client Relationships",
+      "description": "3.3 Manage Client Relationships",
+      "level": 2,
+      "parentId": "business",
+      "type": "task",
+      "color": "#f43f5e",
+      "employee": "",
+      "employeeEmail": "",
+      "size": 1.18,
+      "x": -330.2382448454645,
+      "y": 127.66401726097452
+    },
+    {
+      "id": "3.4",
+      "title": "3.4 Grow the Business",
+      "description": "3.4 Grow the Business",
+      "level": 2,
+      "parentId": "business",
+      "type": "task",
+      "color": "#f43f5e",
+      "employee": "",
+      "employeeEmail": "",
+      "size": 1.18,
+      "x": -382.511099371921,
+      "y": 47.89255073023736
+    },
+    {
+      "id": "leadership",
+      "title": "4.0 Leadership (Lead People)",
+      "description": "4.0 Leadership (Lead People)",
+      "level": 1,
+      "parentId": "prime-pm-root",
+      "type": "category",
+      "color": "#f43f5e",
+      "employee": "",
+      "employeeEmail": "",
+      "size": 1.35,
+      "x": -43.20130444446487,
+      "y": 206.13142769732232
+    },
+    {
+      "id": "4.1",
+      "title": "4.1 Manage Team",
+      "description": "4.1 Manage Team",
+      "level": 2,
+      "parentId": "leadership",
+      "type": "task",
+      "color": "#f43f5e",
+      "employee": "",
+      "employeeEmail": "",
+      "size": 1.18,
+      "x": -147.5793794953845,
+      "y": 337.70509880253854
+    },
+    {
+      "id": "4.2",
+      "title": "4.2 Communication",
+      "description": "4.2 Communication",
+      "level": 2,
+      "parentId": "leadership",
+      "type": "task",
+      "color": "#f43f5e",
+      "employee": "",
+      "employeeEmail": "",
+      "size": 1.18,
+      "x": -56.541167726081,
+      "y": 377.8466526160262
+    },
+    {
+      "id": "4.3",
+      "title": "4.3 Culture",
+      "description": "4.3 Culture",
+      "level": 2,
+      "parentId": "leadership",
+      "type": "task",
+      "color": "#f43f5e",
+      "employee": "",
+      "employeeEmail": "",
+      "size": 1.18,
+      "x": 38.96782062828183,
+      "y": 354.21631672687556
+    },
+    {
+      "id": "8b2c05e0-cd0b-45be-876f-ace05f67c382",
+      "title": "New idea",
+      "description": "",
+      "level": 2,
+      "parentId": null,
+      "type": "concept",
+      "employee": "",
+      "employeeEmail": "",
+      "size": 1.3199999999999998,
+      "x": 57.21057723622982,
+      "y": -120.15844913323357
+    },
+    {
+      "id": "5cd8129e-1d9f-47b4-9301-0a38db6e0912",
+      "title": "New idea",
+      "description": "",
+      "level": 3,
+      "parentId": "8b2c05e0-cd0b-45be-876f-ace05f67c382",
+      "type": "concept",
+      "employee": "",
+      "employeeEmail": "",
+      "size": 3.5,
+      "x": 227.86275114927335,
+      "y": -342.9845360897554
+    }
+  ],
+  "links": [
+    {
+      "id": "prime-pm-root->pursuit",
+      "source": "prime-pm-root",
+      "target": "pursuit",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "pursuit->1.1",
+      "source": "pursuit",
+      "target": "1.1",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "pursuit->1.2",
+      "source": "pursuit",
+      "target": "1.2",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "pursuit->1.3",
+      "source": "pursuit",
+      "target": "1.3",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "prime-pm-root->delivery",
+      "source": "prime-pm-root",
+      "target": "delivery",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "delivery->2.1",
+      "source": "delivery",
+      "target": "2.1",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "delivery->2.2",
+      "source": "delivery",
+      "target": "2.2",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "delivery->2.3",
+      "source": "delivery",
+      "target": "2.3",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "delivery->2.4",
+      "source": "delivery",
+      "target": "2.4",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "delivery->2.5",
+      "source": "delivery",
+      "target": "2.5",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "delivery->2.6",
+      "source": "delivery",
+      "target": "2.6",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "delivery->2.7",
+      "source": "delivery",
+      "target": "2.7",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "prime-pm-root->business",
+      "source": "prime-pm-root",
+      "target": "business",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "business->3.1",
+      "source": "business",
+      "target": "3.1",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "business->3.2",
+      "source": "business",
+      "target": "3.2",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "business->3.3",
+      "source": "business",
+      "target": "3.3",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "business->3.4",
+      "source": "business",
+      "target": "3.4",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "prime-pm-root->leadership",
+      "source": "prime-pm-root",
+      "target": "leadership",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "leadership->4.1",
+      "source": "leadership",
+      "target": "4.1",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "leadership->4.2",
+      "source": "leadership",
+      "target": "4.2",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "leadership->4.3",
+      "source": "leadership",
+      "target": "4.3",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "23529596-259b-4245-8fe1-46c0b641fdbd",
+      "source": "8b2c05e0-cd0b-45be-876f-ace05f67c382",
+      "target": "prime-pm-root",
+      "kind": "cross",
+      "arrows": "none"
+    },
+    {
+      "id": "6e52a2de-c8f4-46e5-b720-1b9e16eed826",
+      "source": "8b2c05e0-cd0b-45be-876f-ace05f67c382",
+      "target": "5cd8129e-1d9f-47b4-9301-0a38db6e0912",
+      "kind": "parent",
+      "arrows": "none"
+    },
+    {
+      "id": "3456e8e6-7e60-4a61-8919-3c52f85da8a9",
+      "source": "5cd8129e-1d9f-47b4-9301-0a38db6e0912",
+      "target": "2.1",
+      "kind": "cross",
+      "arrows": "both"
+    }
+  ]
+}

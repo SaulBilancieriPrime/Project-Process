@@ -1,0 +1,877 @@
+{
+  "settings": {
+    "physics": true,
+    "charge": -230,
+    "linkDistance": 56,
+    "collide": 10,
+    "radial": false,
+    "colorBy": "custom",
+    "cardInfo": false,
+    "enlarge": 0.9
+  },
+  "nodes": [
+    {
+      "id": "pm-req",
+      "title": "PM requisition",
+      "description": "Project manager requests a requisition to open a seat.",
+      "level": 1,
+      "parentId": null,
+      "type": "task",
+      "color": "#5b9bd5",
+      "size": 1.35,
+      "pinned": false,
+      "collapsed": false,
+      "x": -193.6269825125623,
+      "y": 204.40960372498856
+    },
+    {
+      "id": "ta",
+      "title": "Talent acquisition",
+      "description": "TA posts the role and works the market.",
+      "level": 1,
+      "parentId": null,
+      "type": "task",
+      "color": "#5b9bd5",
+      "size": 1.25,
+      "pinned": false,
+      "collapsed": false,
+      "x": -26.773957548392776,
+      "y": 225.15864778046318
+    },
+    {
+      "id": "source-referral",
+      "title": "Referral",
+      "description": "Someone known refers a candidate.",
+      "level": 1,
+      "parentId": null,
+      "type": "info",
+      "color": "#8b5cf6",
+      "size": 1.1,
+      "pinned": false,
+      "collapsed": false,
+      "x": 59.49616703056047,
+      "y": 190.87371254191856
+    },
+    {
+      "id": "source-board",
+      "title": "Job board",
+      "description": "Public posting brings a candidate in.",
+      "level": 1,
+      "parentId": null,
+      "type": "info",
+      "color": "#8b5cf6",
+      "size": 1.15,
+      "pinned": false,
+      "collapsed": false,
+      "x": 36.43177347482515,
+      "y": 158.50419295573775
+    },
+    {
+      "id": "source-agency",
+      "title": "Agency",
+      "description": "A search partner submits a candidate.",
+      "level": 1,
+      "parentId": null,
+      "type": "info",
+      "color": "#8b5cf6",
+      "size": 1.1,
+      "pinned": false,
+      "collapsed": false,
+      "x": 85.92521372919778,
+      "y": 220.0934111261728
+    },
+    {
+      "id": "source",
+      "title": "Source",
+      "description": "The true origin of this process — where the person actually enters.",
+      "level": 1,
+      "parentId": null,
+      "type": "category",
+      "color": "#8b5cf6",
+      "size": 1.45,
+      "pinned": false,
+      "collapsed": false,
+      "x": 111.88519477330773,
+      "y": 112.5532296451398
+    },
+    {
+      "id": "applicant",
+      "title": "Applicant",
+      "description": "A person is now in the hiring process.",
+      "level": 1,
+      "parentId": null,
+      "type": "concept",
+      "color": "#5b9bd5",
+      "size": 1.35,
+      "pinned": false,
+      "collapsed": false,
+      "x": 112.88338351958032,
+      "y": -36.70029018483709
+    },
+    {
+      "id": "recruiter-screen",
+      "title": "Recruiter screen",
+      "description": "TA reviews fit, pay, and interest.",
+      "level": 1,
+      "parentId": null,
+      "type": "task",
+      "color": "#5b9bd5",
+      "size": 1.25,
+      "pinned": false,
+      "collapsed": false,
+      "x": 78.93656831667067,
+      "y": -199.7634049362702
+    },
+    {
+      "id": "hm-review",
+      "title": "Hiring manager review",
+      "description": "The PM / hiring manager decides decline or move forward.",
+      "level": 1,
+      "parentId": null,
+      "type": "task",
+      "color": "#5b9bd5",
+      "size": 1.35,
+      "pinned": false,
+      "collapsed": false,
+      "x": 10.115889038110712,
+      "y": -319.3738672833953
+    },
+    {
+      "id": "decline",
+      "title": "Decline",
+      "description": "Hiring manager passes. Process ends for this applicant.",
+      "level": 1,
+      "parentId": null,
+      "type": "info",
+      "color": "#94a3b8",
+      "size": 1.1,
+      "pinned": false,
+      "collapsed": false,
+      "x": 57.75739177002989,
+      "y": -402.4247461218947
+    },
+    {
+      "id": "move-forward",
+      "title": "Move forward",
+      "description": "Hiring manager wants to meet them.",
+      "level": 1,
+      "parentId": null,
+      "type": "task",
+      "color": "#5b9bd5",
+      "size": 1.25,
+      "pinned": false,
+      "collapsed": false,
+      "x": -110.93005972495399,
+      "y": -333.0296097434234
+    },
+    {
+      "id": "phone-screen",
+      "title": "Phone screenings",
+      "description": "Optional first live conversation.",
+      "level": 1,
+      "parentId": null,
+      "type": "task",
+      "color": "#5b9bd5",
+      "size": 1.15,
+      "pinned": false,
+      "collapsed": false,
+      "x": -200.91822729627648,
+      "y": -273.73539179400683
+    },
+    {
+      "id": "first-interview",
+      "title": "Interview Process",
+      "description": "Hiring manager can start here instead of a phone call.",
+      "level": 1,
+      "parentId": null,
+      "type": "task",
+      "color": "#5b9bd5",
+      "size": 1.15,
+      "pinned": false,
+      "collapsed": false,
+      "x": -222.46379834973933,
+      "y": -308.87465215261767
+    },
+    {
+      "id": "offer",
+      "title": "Offer",
+      "description": "Compensation, start date, and written offer.",
+      "level": 1,
+      "parentId": null,
+      "type": "task",
+      "color": "#5b9bd5",
+      "size": 1.25,
+      "pinned": false,
+      "collapsed": false,
+      "x": -300.6062973919431,
+      "y": -206.62610685683157
+    },
+    {
+      "id": "onboard",
+      "title": "Hired / onboard",
+      "description": "They accept and join the firm.",
+      "level": 1,
+      "parentId": null,
+      "type": "task",
+      "color": "#e67e22",
+      "size": 1.35,
+      "pinned": false,
+      "collapsed": false,
+      "x": -418.28126601443154,
+      "y": -42.1978203594865
+    },
+    {
+      "id": "work-under-pm",
+      "title": "Work under PM",
+      "description": "They deliver work under their project manager.",
+      "level": 1,
+      "parentId": null,
+      "type": "category",
+      "color": "#e67e22",
+      "size": 1.5,
+      "pinned": false,
+      "collapsed": false,
+      "x": -508.7418054466137,
+      "y": 104.58264531759573
+    },
+    {
+      "id": "perf-review",
+      "title": "Annual performance review",
+      "description": "Yearly review of goals, delivery, and feedback.",
+      "level": 1,
+      "parentId": null,
+      "type": "task",
+      "color": "#34d399",
+      "size": 1.25,
+      "pinned": false,
+      "collapsed": false,
+      "x": -570.8359071872526,
+      "y": 153.715668029546
+    },
+    {
+      "id": "raise",
+      "title": "Annual raise / salary adjustment",
+      "description": "Comp moves with performance and market.",
+      "level": 1,
+      "parentId": null,
+      "type": "task",
+      "color": "#34d399",
+      "size": 1.25,
+      "pinned": false,
+      "collapsed": false,
+      "x": -527.7156009910742,
+      "y": 176.600634568101
+    },
+    {
+      "id": "promotion",
+      "title": "Promotion",
+      "description": "They move up in role or level.",
+      "level": 1,
+      "parentId": null,
+      "type": "task",
+      "color": "#34d399",
+      "size": 1.3,
+      "pinned": false,
+      "collapsed": false,
+      "x": -444.3318979712046,
+      "y": 128.2562378003122
+    },
+    {
+      "id": "become-pm",
+      "title": "Become project manager",
+      "description": "They take a PM seat and run the delivery loop.",
+      "level": 1,
+      "parentId": null,
+      "type": "category",
+      "color": "#e67e22",
+      "size": 1.45,
+      "pinned": false,
+      "collapsed": false,
+      "x": -379.44671871827785,
+      "y": 154.93534318861725
+    },
+    {
+      "id": "retire",
+      "title": "Retire",
+      "description": "They leave the firm at the end of a career.",
+      "level": 1,
+      "parentId": null,
+      "type": "info",
+      "color": "#94a3b8",
+      "size": 1.25,
+      "pinned": false,
+      "collapsed": false,
+      "x": -523.7330585136716,
+      "y": 22.680000302727194
+    },
+    {
+      "id": "leave",
+      "title": "Leave",
+      "description": "They resign or otherwise exit.",
+      "level": 1,
+      "parentId": null,
+      "type": "info",
+      "color": "#94a3b8",
+      "size": 1.25,
+      "pinned": false,
+      "collapsed": false,
+      "x": -489.1793883371251,
+      "y": 196.35030179379453
+    },
+    {
+      "id": "pip",
+      "title": "Performance improvement plan",
+      "description": "HR puts them on a PIP after performance issues.",
+      "level": 1,
+      "parentId": null,
+      "type": "task",
+      "color": "#f43f5e",
+      "size": 1.25,
+      "pinned": false,
+      "collapsed": false,
+      "x": -589.0508487447621,
+      "y": 104.57511089115667
+    },
+    {
+      "id": "misconduct",
+      "title": "Misconduct warning",
+      "description": "HR issues a warning before termination.",
+      "level": 1,
+      "parentId": null,
+      "type": "task",
+      "color": "#f43f5e",
+      "size": 1.25,
+      "pinned": false,
+      "collapsed": false,
+      "x": -576.4331689065581,
+      "y": 64.51810383420852
+    },
+    {
+      "id": "fired",
+      "title": "Fired",
+      "description": "Employment ends for performance or misconduct.",
+      "level": 1,
+      "parentId": null,
+      "type": "info",
+      "color": "#f43f5e",
+      "size": 1.2,
+      "pinned": false,
+      "collapsed": false,
+      "x": -664.3511158364773,
+      "y": 70.99495609772893
+    },
+    {
+      "id": "long-lead",
+      "title": "Long lead",
+      "description": "Capture every opportunity and all related intelligence.",
+      "level": 1,
+      "parentId": null,
+      "type": "task",
+      "color": "#e67e22",
+      "size": 1.4,
+      "pinned": false,
+      "collapsed": false,
+      "x": 714.1321145113277,
+      "y": -39.734378358057825
+    },
+    {
+      "id": "positioning",
+      "title": "Positioning & Go/No-go",
+      "description": "Leverage experience and insight to decide where to play.",
+      "level": 1,
+      "parentId": null,
+      "type": "task",
+      "color": "#e67e22",
+      "size": 1.4,
+      "pinned": false,
+      "collapsed": false,
+      "x": 697.3632473256928,
+      "y": 66.05387168573611
+    },
+    {
+      "id": "proposal",
+      "title": "Proposal Development",
+      "description": "Build smarter proposals with the right content, people, and partners.",
+      "level": 1,
+      "parentId": null,
+      "type": "task",
+      "color": "#e67e22",
+      "size": 1.4,
+      "pinned": false,
+      "collapsed": false,
+      "x": 632.0377162006923,
+      "y": 150.67057062576276
+    },
+    {
+      "id": "shortlist",
+      "title": "Shortlist & Selection",
+      "description": "Strengthen client relationships and positioning through selection.",
+      "level": 1,
+      "parentId": null,
+      "type": "task",
+      "color": "#e67e22",
+      "size": 1.4,
+      "pinned": false,
+      "collapsed": false,
+      "x": 534.3482247835191,
+      "y": 191.88900857566745
+    },
+    {
+      "id": "negotiation",
+      "title": "Negotiation & Award",
+      "description": "Negotiate effectively and transition seamlessly to project setup.",
+      "level": 1,
+      "parentId": null,
+      "type": "task",
+      "color": "#e67e22",
+      "size": 1.4,
+      "pinned": false,
+      "collapsed": false,
+      "x": 430.18793032934104,
+      "y": 176.6569685624413
+    },
+    {
+      "id": "setup",
+      "title": "Project Setup",
+      "description": "Stand up the project accurately and efficiently the first time.",
+      "level": 1,
+      "parentId": null,
+      "type": "task",
+      "color": "#e67e22",
+      "size": 1.4,
+      "pinned": false,
+      "collapsed": false,
+      "x": 348.87528575642546,
+      "y": 109.34079863810138
+    },
+    {
+      "id": "staffing",
+      "title": "Staffing",
+      "description": "Find and engage the right people and partners for successful delivery.",
+      "level": 1,
+      "parentId": null,
+      "type": "task",
+      "color": "#e67e22",
+      "size": 1.4,
+      "pinned": false,
+      "collapsed": false,
+      "x": 312.3753933755754,
+      "y": 9.362288249207836
+    },
+    {
+      "id": "execution",
+      "title": "Execution",
+      "description": "Deliver quality work. Manage performance, risk, and changes in real time.",
+      "level": 1,
+      "parentId": null,
+      "type": "task",
+      "color": "#e67e22",
+      "size": 1.4,
+      "pinned": false,
+      "collapsed": false,
+      "x": 329.42314644490966,
+      "y": -95.2423218238813
+    },
+    {
+      "id": "invoice",
+      "title": "Invoice & Billing",
+      "description": "Bill accurately and promptly with full visibility into status.",
+      "level": 1,
+      "parentId": null,
+      "type": "task",
+      "color": "#e67e22",
+      "size": 1.4,
+      "pinned": false,
+      "collapsed": false,
+      "x": 429.77764166662473,
+      "y": -168.57258875229428
+    },
+    {
+      "id": "collect",
+      "title": "Collect",
+      "description": "Accelerate cash collection and manage AR proactively.",
+      "level": 1,
+      "parentId": null,
+      "type": "task",
+      "color": "#e67e22",
+      "size": 1.4,
+      "pinned": false,
+      "collapsed": false,
+      "x": 491.0696498878033,
+      "y": -220.87370535210448
+    },
+    {
+      "id": "closeout",
+      "title": "Closeout",
+      "description": "Close projects cleanly and capture final performance data.",
+      "level": 1,
+      "parentId": null,
+      "type": "task",
+      "color": "#e67e22",
+      "size": 1.4,
+      "pinned": false,
+      "collapsed": false,
+      "x": 595.805620323315,
+      "y": -206.12783749509458
+    },
+    {
+      "id": "knowledge",
+      "title": "Institutional Knowledge",
+      "description": "Capture lessons, insights, and intelligence to fuel the next opportunity.",
+      "level": 1,
+      "parentId": null,
+      "type": "task",
+      "color": "#e67e22",
+      "size": 1.4,
+      "pinned": false,
+      "collapsed": false,
+      "x": 677.8166292301801,
+      "y": -139.4247377686013
+    }
+  ],
+  "links": [
+    {
+      "id": "pm-req->ta",
+      "source": "pm-req",
+      "target": "ta",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "ta->source-referral",
+      "source": "ta",
+      "target": "source-referral",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "ta->source-board",
+      "source": "ta",
+      "target": "source-board",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "ta->source-agency",
+      "source": "ta",
+      "target": "source-agency",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "source-referral->source",
+      "source": "source-referral",
+      "target": "source",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "source-board->source",
+      "source": "source-board",
+      "target": "source",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "source-agency->source",
+      "source": "source-agency",
+      "target": "source",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "source->applicant",
+      "source": "source",
+      "target": "applicant",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "applicant->recruiter-screen",
+      "source": "applicant",
+      "target": "recruiter-screen",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "recruiter-screen->hm-review",
+      "source": "recruiter-screen",
+      "target": "hm-review",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "hm-review->decline",
+      "source": "hm-review",
+      "target": "decline",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "hm-review->move-forward",
+      "source": "hm-review",
+      "target": "move-forward",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "move-forward->phone-screen",
+      "source": "move-forward",
+      "target": "phone-screen",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "move-forward->first-interview",
+      "source": "move-forward",
+      "target": "first-interview",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "offer->onboard",
+      "source": "offer",
+      "target": "onboard",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "onboard->work-under-pm",
+      "source": "onboard",
+      "target": "work-under-pm",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "work-under-pm->perf-review",
+      "source": "work-under-pm",
+      "target": "perf-review",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "work-under-pm->raise",
+      "source": "work-under-pm",
+      "target": "raise",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "work-under-pm->promotion",
+      "source": "work-under-pm",
+      "target": "promotion",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "work-under-pm->become-pm",
+      "source": "work-under-pm",
+      "target": "become-pm",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "work-under-pm->retire",
+      "source": "work-under-pm",
+      "target": "retire",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "work-under-pm->leave",
+      "source": "work-under-pm",
+      "target": "leave",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "work-under-pm->pip",
+      "source": "work-under-pm",
+      "target": "pip",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "work-under-pm->misconduct",
+      "source": "work-under-pm",
+      "target": "misconduct",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "perf-review->work-under-pm",
+      "source": "perf-review",
+      "target": "work-under-pm",
+      "kind": "cross",
+      "arrows": "one"
+    },
+    {
+      "id": "perf-review->raise",
+      "source": "perf-review",
+      "target": "raise",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "perf-review->pip",
+      "source": "perf-review",
+      "target": "pip",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "raise->work-under-pm",
+      "source": "raise",
+      "target": "work-under-pm",
+      "kind": "cross",
+      "arrows": "one"
+    },
+    {
+      "id": "promotion->work-under-pm",
+      "source": "promotion",
+      "target": "work-under-pm",
+      "kind": "cross",
+      "arrows": "one"
+    },
+    {
+      "id": "promotion->become-pm",
+      "source": "promotion",
+      "target": "become-pm",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "become-pm->pm-req",
+      "source": "become-pm",
+      "target": "pm-req",
+      "kind": "cross",
+      "arrows": "one"
+    },
+    {
+      "id": "pip->work-under-pm",
+      "source": "pip",
+      "target": "work-under-pm",
+      "kind": "cross",
+      "arrows": "one"
+    },
+    {
+      "id": "pip->fired",
+      "source": "pip",
+      "target": "fired",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "misconduct->work-under-pm",
+      "source": "misconduct",
+      "target": "work-under-pm",
+      "kind": "cross",
+      "arrows": "one"
+    },
+    {
+      "id": "misconduct->fired",
+      "source": "misconduct",
+      "target": "fired",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "long-lead->positioning",
+      "source": "long-lead",
+      "target": "positioning",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "positioning->proposal",
+      "source": "positioning",
+      "target": "proposal",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "proposal->shortlist",
+      "source": "proposal",
+      "target": "shortlist",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "shortlist->negotiation",
+      "source": "shortlist",
+      "target": "negotiation",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "negotiation->setup",
+      "source": "negotiation",
+      "target": "setup",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "setup->staffing",
+      "source": "setup",
+      "target": "staffing",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "staffing->execution",
+      "source": "staffing",
+      "target": "execution",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "execution->invoice",
+      "source": "execution",
+      "target": "invoice",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "invoice->collect",
+      "source": "invoice",
+      "target": "collect",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "collect->closeout",
+      "source": "collect",
+      "target": "closeout",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "closeout->knowledge",
+      "source": "closeout",
+      "target": "knowledge",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "knowledge->long-lead",
+      "source": "knowledge",
+      "target": "long-lead",
+      "kind": "parent",
+      "arrows": "one"
+    },
+    {
+      "id": "b10b62f3-7c73-4f8d-9bd9-252a427bc534",
+      "source": "phone-screen",
+      "target": "offer",
+      "kind": "cross",
+      "arrows": "one"
+    },
+    {
+      "id": "c9222f43-56b2-45d1-b210-5dc07571ed9f",
+      "source": "first-interview",
+      "target": "offer",
+      "kind": "cross",
+      "arrows": "one"
+    }
+  ]
+}

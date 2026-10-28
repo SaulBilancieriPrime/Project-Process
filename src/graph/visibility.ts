@@ -1,4 +1,4 @@
-import { nodeColor, normalizeHex } from "./colors";
+import { nodeWorkflowStatus, type WorkflowStatus } from "./workflowStatus";
 import type { ColorBy, GraphLink, GraphNode } from "../types";
 
 export function childrenOf(nodes: GraphNode[], id: string) {
@@ -36,14 +36,22 @@ export function matchesQuery(node: GraphNode, query: string) {
 export function isFiltered(
   node: GraphNode,
   query: string,
-  colors: string[],
   colorBy: ColorBy,
+  options?: {
+    statusFilters?: WorkflowStatus[];
+    employeeEmail?: string | null;
+  },
 ) {
   if (!matchesQuery(node, query)) return false;
-  if (colors.length) {
-    const paint = normalizeHex(nodeColor(node, colorBy));
-    const allowed = new Set(colors.map(normalizeHex));
-    if (!allowed.has(paint)) return false;
+  const statusFilters = options?.statusFilters ?? [];
+  if (statusFilters.length) {
+    if (!statusFilters.includes(nodeWorkflowStatus(node, colorBy))) return false;
+  }
+  const employeeEmail = options?.employeeEmail;
+  if (employeeEmail === "__unassigned__") {
+    if (node.employeeEmail.trim()) return false;
+  } else if (employeeEmail) {
+    if (node.employeeEmail.trim().toLowerCase() !== employeeEmail.trim().toLowerCase()) return false;
   }
   return true;
 }

@@ -1,8 +1,15 @@
 import { forceCollide, forceRadial } from "d3-force";
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import ForceGraph2D, { type ForceGraphMethods } from "react-force-graph-2d";
-import { graphTheme, nodeColor, sizeForLevel, withAlpha } from "../graph/colors";
+import { users } from "../data/users";
+import { personStyle } from "../data/personStyle";
+import { NODE_FILL, graphTheme, nodeColor, sizeForLevel, withAlpha } from "../graph/colors";
+import { employeeInitials } from "../graph/employee";
+import { findOriginId, hopDistances, hopGlow, pulseAmountOnLink, pulseFront, pulseHalo, pulseStroke } from "../graph/pulse";
+import { rotatePoint } from "../graph/viewRotation";
 import { isFiltered, linkEnds } from "../graph/visibility";
+import { STATUS_COLORS, type WorkflowStatus } from "../graph/workflowStatus";
+import { loadPersonPhoto } from "../lib/personPhoto";
 import type { ArrowStyle, GraphLink, GraphNode, GraphSettings } from "../types";
 
 export type GraphHandle = ForceGraphMethods<GraphNode, GraphLink>;
@@ -21,9 +28,11 @@ type Props = {
   placeSize?: number;
   linkArrows: ArrowStyle;
   search: string;
-  colors: string[];
+  statusFilters: WorkflowStatus[];
+  employeeFilter: string | null;
   hideFiltered: boolean;
   theme: "light" | "dark";
+  rotation?: number;
   width: number;
   height: number;
   onSelect: (id: string | null, additive?: boolean) => void;
@@ -35,7 +44,7 @@ type Props = {
   onNodeMenu: (id: string, x: number, y: number) => void;
   onLinkMenu: (id: string, x: number, y: number) => void;
   onBackgroundMenu: (x: number, y: number) => void;
-  onBackground: (x: number, y: number, graph: { x: number; y: number }, dbl: boolean) => void;
+  onBackground: (x: number, y: number, graph: { x: number; y: number }) => void;
   onDragEnd: (id: string, x: number, y: number) => void;
   onConnectTarget: (id: string) => void;
   onPlace: (graph: { x: number; y: number }) => void;
@@ -43,6 +52,20 @@ type Props = {
   onSettle: () => void;
   graphRef: MutableRefObject<GraphHandle | undefined>;
 };
+
+function layoutCentroid(nodes: GraphNode[]) {
+  let sx = 0;
+  let sy = 0;
+  let count = 0;
+  for (const n of nodes) {
+    if (typeof n.x !== "number" || typeof n.y !== "number") continue;
+    sx += n.x;
+    sy += n.y;
+    count += 1;
+  }
+  if (!count) return { x: 0, y: 0 };
+  return { x: sx / count, y: sy / count };
+}
 
 function smoothstep(edge0: number, edge1: number, x: number) {
   const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
@@ -63,6 +86,113 @@ function cardBox(node: GraphNode, globalScale: number, enlarge: number) {
 
 function cardsAtZoom(cardInfo: boolean, globalScale: number) {
   return Boolean(cardInfo) && globalScale > 1.4;
+}
+
+function viewScale(value: number | undefined, fallback = 1) {
+  return Number.isFinite(value) ? (value as number) : fallback;
+}
+
+function assigneeEmail(node: GraphNode) {
+  const email = node.employeeEmail?.trim();
+  if (email) return email.toLowerCase();
+  const name = node.employee?.trim().toLowerCase();
+  if (!name) return "";
+  return users.find((user) => user.name.toLowerCase() === name)?.email.toLowerCase() ?? "";
+}
+
+function inScreenSpace(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  globalScale: number,
+  paint: (scale: number) => void,
+) {
+  const k = Math.max(globalScale, 1e-4);
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(1 / k, 1 / k);
+  paint(k);
+  ctx.restore();
+}
+
+function drawUnassignedIcon(ctx: CanvasRenderingContext2D, x: number, y: number, r: number) {
+  const size = r * 1.42;
+  ctx.save();
+  ctx.translate(x - size / 2, y - size / 2 + size * 0.06);
+  ctx.scale(size / 24, size / 24);
+  ctx.fillStyle = "#1a1208";
+  ctx.beginPath();
+  ctx.arc(12, 8, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(4, 20);
+  ctx.bezierCurveTo(4, 16, 8, 14, 12, 14);
+  ctx.bezierCurveTo(16, 14, 20, 16, 20, 20);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function paintNodeDisc(
+  ctx: CanvasRenderingContext2D,
+  args: {
+    x: number;
+    y: number;
+    r: number;
+    fill: string;
+    border: string;
+    globalScale: number;
+    selected?: boolean;
+    hovered?: boolean;
+    photo?: HTMLImageElement;
+    initials?: string;
+    unassigned?: boolean;
+  },
+) {
+  const { x, y, r, fill, border, globalScale, selected, hovered, photo, initials, unassigned } = args;
+  const statusW = (selected || hovered ? 2.8 : 2.2) / globalScale;
+  const inkW = Math.max(1.05 / globalScale, r * 0.08);
+  const innerR = Math.max(r * 0.62, r - statusW - inkW);
+
+  ctx.beginPath();
+  ctx.arc(x, y, innerR, 0, Math.PI * 2);
+  ctx.fillStyle = fill;
+  ctx.fill();
+
+  inScreenSpace(ctx, x, y, globalScale, (k) => {
+    const innerScreen = innerR * k;
+    const face = Math.min(innerScreen, 12);
+    ctx.beginPath();
+    ctx.arc(0, 0, innerScreen, 0, Math.PI * 2);
+    ctx.clip();
+    if (photo && photo.naturalWidth) {
+      const cover = face * 2.2;
+      const scale = Math.max(cover / photo.naturalWidth, cover / photo.naturalHeight);
+      const dw = photo.naturalWidth * scale;
+      const dh = photo.naturalHeight * scale;
+      ctx.drawImage(photo, -dw / 2, -dh * 0.32, dw, dh);
+    } else if (initials) {
+      ctx.fillStyle = "#1a1208";
+      ctx.font = `700 ${Math.max(6, face * 0.72)}px "Segoe UI", sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(initials, 0, 0);
+    } else if (unassigned) {
+      drawUnassignedIcon(ctx, 0, 0, face);
+    }
+  });
+
+  ctx.beginPath();
+  ctx.arc(x, y, innerR, 0, Math.PI * 2);
+  ctx.strokeStyle = "#111111";
+  ctx.lineWidth = inkW;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(x, y, innerR + inkW * 0.5 + statusW * 0.5, 0, Math.PI * 2);
+  ctx.strokeStyle = border;
+  ctx.lineWidth = statusW;
+  ctx.stroke();
 }
 
 function shouldLabel(
@@ -141,9 +271,11 @@ export default function GraphCanvas({
   placeSize,
   linkArrows,
   search,
-  colors,
+  statusFilters,
+  employeeFilter,
   hideFiltered,
   theme,
+  rotation = 0,
   width,
   height,
   onSelect,
@@ -173,15 +305,26 @@ export default function GraphCanvas({
     | { type: "marquee"; x0: number; y0: number; x1: number; y1: number; additive: boolean; sx0: number; sy0: number }
     | { type: "group"; lastX: number; lastY: number }
     | { type: "pan"; sx: number; sy: number; cx: number; cy: number }
+    | { type: "drag"; ids: string[]; lastX: number; lastY: number; sx: number; sy: number; moved: boolean }
     | null
   >(null);
-  const [gesture, setGesture] = useState<"marquee" | "group" | "pan" | null>(null);
+  const [gesture, setGesture] = useState<"marquee" | "group" | "pan" | "drag" | null>(null);
+  const rotationRef = useRef(rotation);
+  rotationRef.current = rotation;
+  useEffect(() => {
+    graphRef.current?.resumeAnimation?.();
+  }, [graphRef, rotation]);
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const palette = graphTheme(theme);
 
+  const filterOptions = useMemo(
+    () => ({ statusFilters, employeeEmail: employeeFilter }),
+    [statusFilters, employeeFilter],
+  );
+
   const graphData = useMemo(() => {
     const visible = nodes.filter((n) => {
-      if (hideFiltered && !isFiltered(n, search, colors, settings.colorBy)) return false;
+      if (hideFiltered && !isFiltered(n, search, settings.colorBy, filterOptions)) return false;
       return true;
     });
     const ids = new Set(visible.map((n) => n.id));
@@ -193,7 +336,55 @@ export default function GraphCanvas({
         return [{ id: l.id, source: e.source, target: e.target, kind: l.kind, arrows: l.arrows ?? "none" }];
       }),
     };
-  }, [nodes, links, hideFiltered, search, colors, settings.colorBy]);
+  }, [nodes, links, hideFiltered, search, settings.colorBy, filterOptions]);
+
+  const photosRef = useRef(new Map<string, HTMLImageElement>());
+  const photoAsked = useRef(new Set<string>());
+  const [, setPhotoGen] = useState(0);
+  useEffect(() => {
+    const emails = new Set(graphData.nodes.map(assigneeEmail).filter(Boolean));
+    for (const email of emails) {
+      if (photoAsked.current.has(email)) continue;
+      photoAsked.current.add(email);
+      loadPersonPhoto(email).then((url) => {
+        if (!url) return;
+        const img = new Image();
+        img.onload = () => {
+          photosRef.current.set(email, img);
+          setPhotoGen((n) => n + 1);
+        };
+        img.src = url;
+      });
+    }
+  }, [graphData.nodes]);
+
+  const pulseHops = useMemo(() => {
+    if (!settings.pulse) return null;
+    const origin = findOriginId(graphData.nodes);
+    if (!origin) return null;
+    const hops = hopDistances(graphData.nodes, graphData.links, origin);
+    let maxHop = 0;
+    for (const hop of hops.values()) if (hop > maxHop) maxHop = hop;
+    return { hops, maxHop, origin };
+  }, [settings.pulse, graphData]);
+
+  const pulseAt = useRef(0);
+  useEffect(() => {
+    if (!settings.pulse) return;
+    let frame = 0;
+    const tick = (now: number) => {
+      pulseAt.current = now;
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [settings.pulse]);
+
+  function pulseAmountForLink(link: GraphLink) {
+    if (!pulseHops) return 0;
+    const front = pulseFront(pulseAt.current, settings.pulseSpeed ?? 0.7, pulseHops.maxHop);
+    return pulseAmountOnLink(link, pulseHops.hops, front, pulseHops.maxHop);
+  }
 
   useEffect(() => {
     if (!placeArmed) return;
@@ -204,7 +395,7 @@ export default function GraphCanvas({
       const rect = host.getBoundingClientRect();
       if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) return;
       const target = e.target as HTMLElement | null;
-      if (target?.closest(".plus-wrap, .filter-panel, .canvas-tools, .history-panel, .info-panel, .item-actions, .edit-float, .ctx, .omp-header")) return;
+      if (target?.closest(".plus-wrap, .filter-panel, .canvas-tools, .view-compass, .history-panel, .info-panel, .item-actions, .edit-float, .ctx, .omp-header")) return;
       onPlace(graphAtClient(e.clientX, e.clientY));
     };
     window.addEventListener("pointerup", onUp, true);
@@ -220,27 +411,35 @@ export default function GraphCanvas({
       | { distance?: (n: number) => unknown; strength?: (n: number) => unknown }
       | undefined;
     linkForce?.distance?.(settings.linkDistance);
-    linkForce?.strength?.(0.48);
+    linkForce?.strength?.(0.28);
+    const { x: cx, y: cy } = layoutCentroid(nodes);
     if (settings.radial) {
       fg.d3Force(
         "radial",
-        forceRadial((d: GraphNode) => 28 + d.level * 84, 0, 0).strength(0.065) as never,
+        forceRadial((d: GraphNode) => 48 + d.level * 108, cx, cy).strength(0.032) as never,
       );
     } else {
       fg.d3Force("radial", null);
     }
     fg.d3Force(
       "collide",
-      forceCollide((d: GraphNode) => settings.collide + d.size * 7 + Math.max(0, 3 - d.level)) as never,
+      forceCollide((d: GraphNode) => settings.collide + d.size * 8 + Math.max(0, 4 - d.level)).strength(0.92).iterations(3) as never,
     );
     if (settings.physics) fg.d3ReheatSimulation();
-  }, [graphRef, settings]);
+  }, [graphRef, settings, nodes]);
 
-  function graphAtClient(clientX: number, clientY: number) {
+  function canvasAtClient(clientX: number, clientY: number) {
     const rect = hostRef.current?.getBoundingClientRect();
     const sx = clientX - (rect?.left ?? 0);
     const sy = clientY - (rect?.top ?? 0);
-    return graphRef.current?.screen2GraphCoords(sx, sy) ?? { x: 0, y: 0 };
+    const cx = (rect?.width ?? width) / 2;
+    const cy = (rect?.height ?? height) / 2;
+    return rotatePoint(sx, sy, cx, cy, -rotationRef.current);
+  }
+
+  function graphAtClient(clientX: number, clientY: number) {
+    const p = canvasAtClient(clientX, clientY);
+    return graphRef.current?.screen2GraphCoords(p.x, p.y) ?? { x: 0, y: 0 };
   }
 
   function zoomK() {
@@ -260,23 +459,24 @@ export default function GraphCanvas({
     }
   }
 
-  function nodeAt(clientX: number, clientY: number) {
+  function nodeAt(clientX: number, clientY: number, extraPad = 0) {
     const g = graphAtClient(clientX, clientY);
     const k = zoomK();
-    const enlarge = Number.isFinite(settings.enlarge) ? settings.enlarge : 1;
+    const nodeScale = viewScale(settings.enlarge);
+    const cardScale = viewScale(settings.cardScale, nodeScale);
     const cards = cardsAtZoom(Boolean(settings.cardInfo), k);
     let best: GraphNode | null = null;
     let bestD = Infinity;
     for (const n of liveEngineNodes()) {
       if (n.x == null || n.y == null) continue;
-      const r = dotRadius(n, k, enlarge) + 10 / k;
+      const r = dotRadius(n, k, nodeScale) + (10 + extraPad) / k;
       const d = Math.hypot(n.x - g.x, n.y - g.y);
       if (d <= r && d < bestD) {
         best = n;
         bestD = d;
       }
       if (cards) {
-        const box = cardBox(n, k, enlarge);
+        const box = cardBox(n, k, cardScale);
         const rx = n.x - box.w / 2;
         const ry = n.y + r - 10 / k + 6 / k;
         if (g.x >= rx && g.x <= rx + box.w && g.y >= ry && g.y <= ry + box.h && d < bestD + box.w) {
@@ -416,6 +616,28 @@ export default function GraphCanvas({
     return () => host.removeEventListener("auxclick", block);
   }, []);
 
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const trapWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const fg = graphRef.current;
+      if (!fg) return;
+      const oldK = zoomK();
+      const nextK = Math.max(0.12, Math.min(8, oldK * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
+      if (nextK === oldK) return;
+      const g = graphAtClient(e.clientX, e.clientY);
+      fg.zoom(nextK, 0);
+      const after = graphAtClient(e.clientX, e.clientY);
+      const c = fg.centerAt?.() ?? { x: 0, y: 0 };
+      fg.centerAt(c.x + (g.x - after.x), c.y + (g.y - after.y), 0);
+      onZoom(nextK);
+    };
+    host.addEventListener("wheel", trapWheel, { passive: false, capture: true });
+    return () => host.removeEventListener("wheel", trapWheel, { capture: true });
+  }, [graphRef, onZoom]);
+
   return (
     <div
       ref={hostRef}
@@ -425,7 +647,7 @@ export default function GraphCanvas({
         const handledByFg = fgContextHandled.current;
         fgContextHandled.current = false;
         const target = e.target as HTMLElement | null;
-        if (target?.closest(".plus-wrap, .filter-panel, .canvas-tools, .history-panel, .info-panel, .item-actions, .edit-float, .ctx, .omp-header")) return;
+        if (target?.closest(".plus-wrap, .filter-panel, .site-left-rail, .left-panel-top, .left-panel-bottom, .canvas-tools, .view-compass, .history-panel, .info-panel, .item-actions, .edit-float, .ctx, .omp-header")) return;
         if (handledByFg) return;
 
         const node = nodeAt(e.clientX, e.clientY);
@@ -447,7 +669,7 @@ export default function GraphCanvas({
       onPointerDown={(e) => {
         skipBg.current = false;
         if (placeArmed || connectArmed) return;
-        if (e.button === 1) {
+        if (e.button === 1 || (e.button === 0 && (spaceHeld.current || e.altKey))) {
           e.preventDefault();
           const c = graphRef.current?.centerAt?.() ?? { x: 0, y: 0 };
           interaction.current = { type: "pan", sx: e.clientX, sy: e.clientY, cx: c.x, cy: c.y };
@@ -458,11 +680,20 @@ export default function GraphCanvas({
         if (e.button !== 0) return;
         if (spaceHeld.current || e.altKey) return;
         const target = e.target as HTMLElement | null;
-        if (target?.closest(".plus-wrap, .filter-panel, .canvas-tools, .history-panel, .info-panel, .item-actions, .edit-float, .ctx, .omp-header")) return;
+        if (target?.closest(".plus-wrap, .filter-panel, .site-left-rail, .left-panel-top, .left-panel-bottom, .canvas-tools, .view-compass, .history-panel, .info-panel, .item-actions, .edit-float, .ctx, .omp-header")) return;
         const hit = nodeAt(e.clientX, e.clientY);
         if (hit) {
           skipBg.current = true;
           onSelect(hit.id, e.shiftKey);
+          const g = graphAtClient(e.clientX, e.clientY);
+          const ids = e.shiftKey
+            ? (selectedSet.has(hit.id) ? [...selectedSet] : [...selectedSet, hit.id])
+            : selectedSet.has(hit.id) && selectedSet.size > 1
+              ? [...selectedSet]
+              : [hit.id];
+          interaction.current = { type: "drag", ids, lastX: g.x, lastY: g.y, sx: e.clientX, sy: e.clientY, moved: false };
+          setGesture("drag");
+          (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
           return;
         }
         if (linkAtId(e.clientX, e.clientY)) return;
@@ -491,6 +722,9 @@ export default function GraphCanvas({
       }}
       onPointerMove={(e) => {
         if (placeArmed || connectFrom) cursorGraph.current = graphAtClient(e.clientX, e.clientY);
+        if (!interaction.current) {
+          onHover(nodeAt(e.clientX, e.clientY, 12)?.id ?? null);
+        }
         const it = interaction.current;
         if (!it) return;
         if (it.type === "marquee") {
@@ -504,9 +738,29 @@ export default function GraphCanvas({
           it.lastX = g.x;
           it.lastY = g.y;
           skipBg.current = true;
+        } else if (it.type === "drag") {
+          const g = graphAtClient(e.clientX, e.clientY);
+          if (!it.moved && Math.hypot(e.clientX - it.sx, e.clientY - it.sy) < 4) return;
+          it.moved = true;
+          const idSet = new Set(it.ids);
+          const dx = g.x - it.lastX;
+          const dy = g.y - it.lastY;
+          for (const n of liveEngineNodes()) {
+            if (!idSet.has(n.id)) continue;
+            n.x = (n.x ?? 0) + dx;
+            n.y = (n.y ?? 0) + dy;
+            n.fx = n.x;
+            n.fy = n.y;
+            n.vx = 0;
+            n.vy = 0;
+          }
+          it.lastX = g.x;
+          it.lastY = g.y;
+          skipBg.current = true;
         } else if (it.type === "pan") {
           const k = zoomK();
-          graphRef.current?.centerAt(it.cx - (e.clientX - it.sx) / k, it.cy - (e.clientY - it.sy) / k);
+          const delta = rotatePoint(e.clientX - it.sx, e.clientY - it.sy, 0, 0, -rotationRef.current);
+          graphRef.current?.centerAt(it.cx - delta.x / k, it.cy - delta.y / k);
         }
       }}
       onPointerUp={(e) => {
@@ -520,8 +774,7 @@ export default function GraphCanvas({
             skipBg.current = true;
             if (handleGraphClick(e.clientX, e.clientY, it.additive)) return;
             const g = graphAtClient(e.clientX, e.clientY);
-            const dbl = isDouble("__bg__");
-            onBackground(e.clientX, e.clientY, g, dbl);
+            onBackground(e.clientX, e.clientY, g);
             return;
           }
           const minX = Math.min(it.x0, it.x1);
@@ -535,11 +788,25 @@ export default function GraphCanvas({
           onMarquee(ids, it.additive);
         } else if (it.type === "group") {
           onGroupMoveEnd(selectedPositions());
+        } else if (it.type === "drag" && it.moved) {
+          const idSet = new Set(it.ids);
+          onGroupMoveEnd(
+            liveEngineNodes()
+              .filter((n) => idSet.has(n.id) && n.x != null && n.y != null)
+              .map((n) => ({ id: n.id, x: n.x as number, y: n.y as number })),
+          );
         }
       }}
       onPointerLeave={() => {
-        if (!interaction.current) cursorGraph.current = null;
+        if (!interaction.current) {
+          cursorGraph.current = null;
+          onHover(null);
+        }
       }}
+    >
+    <div
+      className="graph-spin pointer-events-none absolute inset-0 origin-center will-change-transform"
+      style={{ transform: `rotate(${rotation}rad)` }}
     >
     <ForceGraph2D<GraphNode, GraphLink>
       ref={graphRef as never}
@@ -548,16 +815,18 @@ export default function GraphCanvas({
       graphData={graphData}
       backgroundColor={palette.bg}
       nodeId="id"
-      nodeLabel={(n) => n.title}
+      nodeLabel={() => ""}
       linkSource="source"
       linkTarget="target"
-      cooldownTicks={settings.physics ? 220 : 0}
-      d3VelocityDecay={0.28}
-      d3AlphaDecay={0.022}
+      cooldownTicks={settings.physics ? 320 : 0}
+      d3VelocityDecay={0.32}
+      d3AlphaDecay={0.018}
       minZoom={0.12}
       maxZoom={8}
-      enableNodeDrag
-      enablePanInteraction={(ev) => spaceHeld.current || ev.altKey}
+      enableNodeDrag={false}
+      enablePanInteraction={false}
+      enableZoomInteraction={false}
+      enablePointerInteraction={false}
       autoPauseRedraw={false}
       warmupTicks={settings.physics ? 20 : 0}
       nodeCanvasObjectMode={() => "replace"}
@@ -622,34 +891,37 @@ export default function GraphCanvas({
         }
         if (handleGraphClick(ev.clientX, ev.clientY, ev.shiftKey, ev.detail === 2)) return;
         const g = graphAtClient(ev.clientX, ev.clientY);
-        const dbl = isDouble("__bg__");
-        onBackground(ev.clientX, ev.clientY, g, dbl);
+        onBackground(ev.clientX, ev.clientY, g);
       }}
       linkColor={(l) => {
         const e = linkEnds(l);
         const src = nodes.find((n) => n.id === e.source);
         const tgt = nodes.find((n) => n.id === e.target);
         const dim =
-          (src && !isFiltered(src, search, colors, settings.colorBy)) ||
-          (tgt && !isFiltered(tgt, search, colors, settings.colorBy));
+          (src && !isFiltered(src, search, settings.colorBy, filterOptions)) ||
+          (tgt && !isFiltered(tgt, search, settings.colorBy, filterOptions));
         if (dim) return palette.linkDim;
+        const amount = pulseAmountForLink(l);
+        if (amount > 0.05) return pulseStroke(amount, theme);
         const hot = l.id === selectedLinkId || selectedSet.has(e.source) || selectedSet.has(e.target);
-        if (l.kind === "cross") return hot ? palette.linkCrossHot : palette.linkCross;
         return hot ? palette.linkHot : palette.link;
       }}
       linkWidth={(l) => {
         const e = linkEnds(l);
-        return l.id === selectedLinkId || selectedSet.has(e.source) || selectedSet.has(e.target)
+        const amount = pulseAmountForLink(l);
+        const hot = l.id === selectedLinkId || selectedSet.has(e.source) || selectedSet.has(e.target);
+        const base = hot
           ? theme === "dark" ? 2.1 : 1.5
           : theme === "dark" ? 1.45 : 0.95;
+        return base + amount * 1.7;
       }}
-      linkLineDash={(l) => (l.kind === "cross" ? [3.2, 3.2] : [])}
       linkDirectionalArrowLength={0}
       linkDirectionalArrowRelPos={0.82}
       linkDirectionalArrowColor={(l) => {
         const e = linkEnds(l);
+        const amount = pulseAmountForLink(l);
+        if (amount > 0.05) return pulseStroke(amount, theme);
         const hot = l.id === selectedLinkId || selectedSet.has(e.source) || selectedSet.has(e.target);
-        if (l.kind === "cross") return hot ? palette.linkCrossHot : palette.linkCross;
         return hot ? palette.linkHot : palette.link;
       }}
       linkCanvasObjectMode={(l) => (l.arrows === "one" || l.arrows === "both" ? "after" : undefined)}
@@ -659,10 +931,11 @@ export default function GraphCanvas({
         const tgt = typeof link.target === "object" ? link.target as GraphNode : nodes.find((n) => n.id === String(link.target));
         if (!src || !tgt || src.x == null || src.y == null || tgt.x == null || tgt.y == null) return;
         const e = linkEnds(link);
+        const amount = pulseAmountForLink(link);
         const hot = link.id === selectedLinkId || selectedSet.has(e.source) || selectedSet.has(e.target);
-        ctx.fillStyle = link.kind === "cross"
-          ? (hot ? palette.linkCrossHot : palette.linkCross)
-          : (hot ? palette.linkHot : palette.link);
+        ctx.fillStyle = amount > 0.05
+          ? pulseStroke(amount, theme)
+          : hot ? palette.linkHot : palette.link;
         const size = 9 / globalScale;
         const along = (t: number) => ({
           x: src.x! + (tgt.x! - src.x!) * t,
@@ -677,14 +950,15 @@ export default function GraphCanvas({
       }}
       nodePointerAreaPaint={(node, color, ctx, globalScale) => {
         ctx.fillStyle = color;
-        const enlarge = Number.isFinite(settings.enlarge) ? settings.enlarge : 1;
+        const nodeScale = viewScale(settings.enlarge);
+        const cardScale = viewScale(settings.cardScale, nodeScale);
         const showCard = cardsAtZoom(Boolean(settings.cardInfo), globalScale);
         if (showCard) {
-          const r = dotRadius(node, globalScale, enlarge);
-          const { w, h } = cardBox(node, globalScale, enlarge);
+          const r = dotRadius(node, globalScale, nodeScale);
+          const { w, h } = cardBox(node, globalScale, cardScale);
           ctx.fillRect((node.x ?? 0) - w / 2, (node.y ?? 0) + r + 6 / globalScale, w, h);
         } else {
-          const r = dotRadius(node, globalScale, settings.enlarge) + 4 / globalScale;
+          const r = dotRadius(node, globalScale, nodeScale) + 10 / globalScale;
           ctx.beginPath();
           ctx.arc(node.x ?? 0, node.y ?? 0, r, 0, Math.PI * 2);
           ctx.fill();
@@ -693,42 +967,83 @@ export default function GraphCanvas({
       nodeCanvasObject={(node, ctx, globalScale) => {
         const x = node.x ?? 0;
         const y = node.y ?? 0;
-        const color = nodeColor(node, settings.colorBy);
-        const matched = isFiltered(node, search, colors, settings.colorBy);
+        const border = nodeColor(node, settings.colorBy);
+        const matched = isFiltered(node, search, settings.colorBy, filterOptions);
         const dim = !matched;
         const selected = selectedSet.has(node.id);
         const hovered = node.id === hoveredId;
         const connecting = node.id === connectFrom;
-        const enlarge = Number.isFinite(settings.enlarge) ? settings.enlarge : 1;
-        const r = dotRadius(node, globalScale, enlarge);
+        const nodeScale = viewScale(settings.enlarge);
+        const cardScale = viewScale(settings.cardScale, nodeScale);
+        const textScale = viewScale(settings.textScale, nodeScale);
+        const r = dotRadius(node, globalScale, nodeScale);
         const asCard = cardsAtZoom(Boolean(settings.cardInfo), globalScale);
+        const showText = settings.showText !== false;
         const alpha = dim ? 0.16 : 1;
-        const fontPx = (11 * enlarge) / globalScale;
         ctx.save();
         ctx.globalAlpha = alpha;
 
+        const email = assigneeEmail(node);
+        const photo = email ? photosRef.current.get(email) : undefined;
+        const fill = email ? personStyle(email).color : NODE_FILL;
         ctx.beginPath();
         ctx.arc(x, y, r + 3.2 / globalScale, 0, Math.PI * 2);
-        ctx.fillStyle = withAlpha(color, hovered || selected ? 0.28 : 0.12);
+        ctx.fillStyle = withAlpha(fill, hovered || selected ? 0.28 : 0.12);
         ctx.fill();
-        ctx.beginPath();
-        ctx.arc(x, y, r, 0, Math.PI * 2);
-        ctx.fillStyle = color;
-        ctx.fill();
+        paintNodeDisc(ctx, {
+          x,
+          y,
+          r,
+          fill,
+          border,
+          globalScale,
+          selected,
+          hovered,
+          photo,
+          initials: email && !(photo && photo.naturalWidth) ? employeeInitials(node.employee || email) : undefined,
+          unassigned: !email,
+        });
+        if (pulseHops) {
+          const hop = pulseHops.hops.get(node.id);
+          if (hop != null) {
+            const glow = hopGlow(
+              hop,
+              pulseFront(pulseAt.current, settings.pulseSpeed ?? 0.7, pulseHops.maxHop),
+              pulseHops.maxHop,
+            );
+            if (glow > 0.08) {
+              const haloR = r + (3.2 + glow * 5.2) / globalScale;
+              ctx.beginPath();
+              ctx.arc(x, y, haloR, 0, Math.PI * 2);
+              ctx.fillStyle = pulseHalo(glow, theme);
+              ctx.globalAlpha = alpha;
+              ctx.fill();
+              ctx.beginPath();
+              ctx.arc(x, y, r + (2.2 + glow * 2.8) / globalScale, 0, Math.PI * 2);
+              ctx.strokeStyle = pulseStroke(glow, theme);
+              ctx.lineWidth = (theme === "dark" ? 1.8 : 1.2 + glow * 1.6) / globalScale;
+              ctx.globalAlpha = alpha * (theme === "dark" ? 0.55 + glow * 0.45 : 0.35 + glow * 0.55);
+              ctx.stroke();
+              ctx.globalAlpha = alpha;
+            }
+          }
+        }
         if (selected || connecting) {
+          ctx.beginPath();
+          ctx.arc(x, y, r + 2.2 / globalScale, 0, Math.PI * 2);
           ctx.strokeStyle = connecting ? palette.connectRing : palette.ring;
           ctx.lineWidth = 1.2 / globalScale;
           ctx.stroke();
         }
 
         if (asCard) {
-          const { w, h } = cardBox(node, globalScale, enlarge);
+          const { w, h } = cardBox(node, globalScale, cardScale);
           const rx = x - w / 2;
           const ry = y + r + 6 / globalScale;
           const rad = 7 / globalScale;
           ctx.globalAlpha = alpha;
           ctx.fillStyle = palette.card;
-          ctx.strokeStyle = selected || connecting ? palette.ring : withAlpha(color, 0.85);
+          ctx.strokeStyle = selected || connecting ? palette.ring : withAlpha(border, 0.85);
           ctx.lineWidth = (selected ? 1.5 : 1) / globalScale;
           ctx.beginPath();
           ctx.moveTo(rx + rad, ry);
@@ -739,53 +1054,61 @@ export default function GraphCanvas({
           ctx.closePath();
           ctx.fill();
           ctx.stroke();
-          ctx.save();
-          ctx.beginPath();
-          ctx.rect(rx, ry, w, h);
-          ctx.clip();
-          const titleSize = (12 * enlarge) / globalScale;
-          const bodySize = (10.5 * enlarge) / globalScale;
-          ctx.fillStyle = palette.cardText;
-          ctx.font = `600 ${titleSize}px "Segoe UI", sans-serif`;
-          ctx.textAlign = "left";
-          ctx.textBaseline = "top";
-          const title = wrapText(ctx, node.title, w - 16 / globalScale, 1)[0] ?? node.title;
-          ctx.fillText(title, rx + 8 / globalScale, ry + 8 / globalScale);
-          if (node.description) {
-            ctx.fillStyle = palette.cardMuted;
-            ctx.font = `${bodySize}px "Segoe UI", sans-serif`;
-            const lines = wrapText(ctx, node.description, w - 16 / globalScale, 2);
-            lines.forEach((line, i) => {
-              ctx.fillText(line, rx + 8 / globalScale, ry + 26 / globalScale + i * (bodySize + 3 / globalScale));
+          if (showText) {
+            inScreenSpace(ctx, rx, ry, globalScale, (k) => {
+              const sw = w * k;
+              const sh = h * k;
+              ctx.beginPath();
+              ctx.rect(0, 0, sw, sh);
+              ctx.clip();
+              const titleSize = 12 * textScale;
+              const bodySize = 10.5 * textScale;
+              ctx.fillStyle = palette.cardText;
+              ctx.font = `600 ${titleSize}px "Segoe UI", sans-serif`;
+              ctx.textAlign = "left";
+              ctx.textBaseline = "top";
+              const title = wrapText(ctx, node.title, sw - 16, 1)[0] ?? node.title;
+              ctx.fillText(title, 8, 8);
+              if (node.description) {
+                ctx.fillStyle = palette.cardMuted;
+                ctx.font = `${bodySize}px "Segoe UI", sans-serif`;
+                const lines = wrapText(ctx, node.description, sw - 16, 2);
+                lines.forEach((line, i) => {
+                  ctx.fillText(line, 8, 26 + i * (bodySize + 3));
+                });
+              }
             });
           }
-          ctx.restore();
-        } else if (shouldLabel(node, globalScale, selected, hovered, Boolean(search && matched))) {
+        } else if (showText && shouldLabel(node, globalScale, selected, hovered, Boolean(search && matched))) {
           ctx.globalAlpha = alpha * smoothstep(0.28, 0.7, globalScale || 0.3);
           if (selected || hovered || node.level <= 1) ctx.globalAlpha = alpha;
-          ctx.font = `${node.level === 0 ? 700 : 600} ${fontPx}px "Segoe UI", sans-serif`;
-          ctx.fillStyle = dim ? palette.labelDim : palette.label;
-          const outward = Math.hypot(x, y) > 80;
-          const maxW = (outward ? 108 : 140) * enlarge / globalScale;
-          const lines = wrapText(ctx, node.title, maxW, 2);
-          if (outward) {
-            const ang = Math.atan2(y, x);
-            const lift = r + 10 / globalScale;
-            const lx = x + Math.cos(ang) * lift;
-            const ly = y + Math.sin(ang) * lift;
-            ctx.textAlign = Math.abs(Math.cos(ang)) < 0.35 ? "center" : Math.cos(ang) > 0 ? "left" : "right";
-            ctx.textBaseline = Math.sin(ang) > 0.35 ? "top" : Math.sin(ang) < -0.35 ? "bottom" : "middle";
-            lines.forEach((line, i) => {
-              const dy = (i - (lines.length - 1) / 2) * (fontPx + 2 / globalScale);
-              ctx.fillText(line, lx, ly + dy);
-            });
-          } else {
-            ctx.textAlign = "center";
-            ctx.textBaseline = "top";
-            lines.forEach((line, i) => {
-              ctx.fillText(line, x, y + r + 4 / globalScale + i * (fontPx + 2 / globalScale));
-            });
-          }
+          inScreenSpace(ctx, x, y, globalScale, (k) => {
+            const fontPx = 11 * textScale;
+            const rScreen = r * k;
+            ctx.font = `${node.level === 0 ? 700 : 600} ${fontPx}px "Segoe UI", sans-serif`;
+            ctx.fillStyle = dim ? palette.labelDim : palette.label;
+            const outward = Math.hypot(x, y) > 80;
+            const maxW = (outward ? 108 : 140) * textScale;
+            const lines = wrapText(ctx, node.title, maxW, 2);
+            if (outward) {
+              const ang = Math.atan2(y, x);
+              const lift = rScreen + 10;
+              const lx = Math.cos(ang) * lift;
+              const ly = Math.sin(ang) * lift;
+              ctx.textAlign = Math.abs(Math.cos(ang)) < 0.35 ? "center" : Math.cos(ang) > 0 ? "left" : "right";
+              ctx.textBaseline = Math.sin(ang) > 0.35 ? "top" : Math.sin(ang) < -0.35 ? "bottom" : "middle";
+              lines.forEach((line, i) => {
+                const dy = (i - (lines.length - 1) / 2) * (fontPx + 2);
+                ctx.fillText(line, lx, ly + dy);
+              });
+            } else {
+              ctx.textAlign = "center";
+              ctx.textBaseline = "top";
+              lines.forEach((line, i) => {
+                ctx.fillText(line, 0, rScreen + 4 + i * (fontPx + 2));
+              });
+            }
+          });
         }
 
         ctx.restore();
@@ -824,8 +1147,8 @@ export default function GraphCanvas({
           const src = placeFrom ? graphData.nodes.find((n) => n.id === placeFrom) : null;
           const ghostLevel = src ? src.level + 1 : 2;
           const ghostSize = placeSize ?? sizeForLevel(ghostLevel);
-          const enlarge = Number.isFinite(settings.enlarge) ? settings.enlarge : 1;
-          const r = dotRadius({ size: ghostSize, level: ghostLevel } as GraphNode, globalScale, enlarge);
+          const nodeScale = viewScale(settings.enlarge);
+          const r = dotRadius({ size: ghostSize, level: ghostLevel } as GraphNode, globalScale, nodeScale);
           ctx.save();
           if (src && src.x != null && src.y != null) {
             ctx.strokeStyle = palette.linkHot;
@@ -840,21 +1163,25 @@ export default function GraphCanvas({
           ctx.globalAlpha = 0.55;
           ctx.beginPath();
           ctx.arc(cur.x, cur.y, r + 3 / globalScale, 0, Math.PI * 2);
-          ctx.fillStyle = withAlpha("#5b9bd5", 0.22);
+          ctx.fillStyle = withAlpha(NODE_FILL, 0.22);
           ctx.fill();
-          ctx.beginPath();
-          ctx.arc(cur.x, cur.y, r, 0, Math.PI * 2);
-          ctx.fillStyle = "#5b9bd5";
-          ctx.fill();
-          ctx.strokeStyle = palette.ring;
-          ctx.lineWidth = 1.2 / globalScale;
-          ctx.stroke();
+          paintNodeDisc(ctx, {
+            x: cur.x,
+            y: cur.y,
+            r,
+            fill: NODE_FILL,
+            border: STATUS_COLORS.incomplete,
+            globalScale,
+            unassigned: true,
+          });
           ctx.fillStyle = palette.label;
           ctx.globalAlpha = 0.9;
-          ctx.font = `600 ${11 / globalScale}px "Segoe UI", sans-serif`;
-          ctx.textAlign = "center";
-          ctx.textBaseline = "top";
-          ctx.fillText("New idea", cur.x, cur.y + r + 4 / globalScale);
+          inScreenSpace(ctx, cur.x, cur.y, globalScale, (k) => {
+            ctx.font = "600 11px \"Segoe UI\", sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "top";
+            ctx.fillText("New idea", 0, r * k + 4);
+          });
           ctx.restore();
           return;
         }
@@ -881,6 +1208,7 @@ export default function GraphCanvas({
         ctx.restore();
       }}
     />
+    </div>
     </div>
   );
 }

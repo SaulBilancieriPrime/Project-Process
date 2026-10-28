@@ -1,6 +1,5 @@
 import { ctxBox, cx, dangerText, menuItem } from "../styles";
-import LinkMenuOptions from "./LinkMenuOptions";
-import SizePresetPicker from "./SizePresetPicker";
+import AddGraphActions from "./AddGraphActions";
 import type { ArrowStyle } from "../types";
 
 type Props = {
@@ -23,37 +22,41 @@ export default function NodeContextMenu({
   onDeleteBranch,
 }: Props) {
   return (
-    <div className={cx("ctx", ctxBox)} style={{ left: x, top: y }}>
-      <div className="ctx-flyout relative">
-        <button type="button" className={cx(menuItem, "ctx-flyout-trigger justify-between gap-3")}>
-          Add Node
-          <span className="ctx-flyout-caret text-sm leading-none text-[var(--muted)]" aria-hidden>
-            ›
-          </span>
+    <div className={cx("ctx", ctxBox, "w-[196px] min-w-0 rounded-lg p-1")} style={{ left: x, top: y }}>
+      <AddGraphActions accent={accent} onAddNode={onAddNode} onLink={onLink} />
+      <div className="sep mx-1 my-1 h-px bg-[var(--line)]" />
+      <div className="grid grid-cols-2 gap-0.5">
+        <button
+          type="button"
+          title="Remove this node only. Children stay."
+          className={cx(menuItem, dangerText, "flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-center")}
+          onClick={onDelete}
+        >
+          <svg width="24" height="16" viewBox="0 0 28 20" aria-hidden>
+            <circle cx="14" cy="6" r="3.4" fill="currentColor" />
+            <path d="M11.4 3.4 L16.6 8.6 M16.6 3.4 L11.4 8.6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+            <circle cx="8" cy="16" r="2.1" fill="none" stroke="currentColor" strokeWidth="1.2" />
+            <circle cx="20" cy="16" r="2.1" fill="none" stroke="currentColor" strokeWidth="1.2" />
+            <path d="M14 9.4 V13.2 M10.4 14.6 H11.6 M16.4 14.6 H17.6" fill="none" stroke="currentColor" strokeWidth="1" opacity="0.55" />
+          </svg>
+          <span className="text-[9px] font-semibold leading-none">Delete</span>
         </button>
-        <div className="ctx-sub ctx-sub-size absolute bottom-0 left-[calc(100%+4px)] z-[1] hidden w-[12.5dvw] rounded-[10px] border border-[var(--line)] bg-[var(--card)] px-2 py-2 shadow-[var(--shadow)]">
-          <div className="mx-1 mb-1 text-[10px] font-bold tracking-wider text-[var(--muted)] uppercase">Size</div>
-          <SizePresetPicker accent={accent} onSelect={onAddNode} />
-        </div>
-      </div>
-      <div className="ctx-flyout relative">
-        <button type="button" className={cx(menuItem, "ctx-flyout-trigger justify-between gap-3")}>
-          Add Link
-          <span className="ctx-flyout-caret text-sm leading-none text-[var(--muted)]" aria-hidden>
-            ›
-          </span>
+        <button
+          type="button"
+          title="Remove this node and everything under it."
+          className={cx(menuItem, dangerText, "flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-center")}
+          onClick={onDeleteBranch}
+        >
+          <svg width="24" height="16" viewBox="0 0 28 20" aria-hidden>
+            <circle cx="14" cy="6" r="3.4" fill="currentColor" />
+            <circle cx="8" cy="16" r="2.2" fill="currentColor" />
+            <circle cx="20" cy="16" r="2.2" fill="currentColor" />
+            <path d="M14 9.4 V13.2 M14 13.2 L8 14.2 M14 13.2 L20 14.2" fill="none" stroke="currentColor" strokeWidth="1.1" />
+            <path d="M11.4 3.4 L16.6 8.6 M16.6 3.4 L11.4 8.6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          </svg>
+          <span className="text-[9px] font-semibold leading-none">Delete branch</span>
         </button>
-        <div className="ctx-sub ctx-sub-link absolute top-0 left-[calc(100%+4px)] z-[1] hidden min-w-44 rounded-[10px] border border-[var(--line)] bg-[var(--card)] p-1.5 shadow-[var(--shadow)]">
-          <LinkMenuOptions onLink={onLink} />
-        </div>
       </div>
-      <div className="sep mx-0.5 my-1 h-px bg-[var(--line)]" />
-      <button type="button" className={cx(menuItem, dangerText)} onClick={onDelete}>
-        Delete
-      </button>
-      <button type="button" className={cx(menuItem, dangerText)} onClick={onDeleteBranch}>
-        Delete branch
-      </button>
     </div>
   );
 }

@@ -40,7 +40,8 @@ html[data-theme="dark"] {
 
 @layer base {
   * { box-sizing: border-box; }
-  html, body, #root { margin: 0; height: 100%; }
+  html, body, #root { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; }
+  #app, body > div { height: 100%; overflow: hidden; }
   body {
     font-family: var(--font-sans);
     color: var(--text);
@@ -65,6 +66,17 @@ html[data-theme="dark"] {
 
 /* Canvas and JS-hook leftovers that cannot become utilities. */
 .graph-wrap canvas { display: block; background: var(--graph-bg) !important; }
+.graph-wrap .force-graph-container,
+.graph-host .force-graph-container {
+  width: 100% !important;
+  height: 100% !important;
+  overflow: hidden;
+}
+.graph-spin,
+.graph-spin .force-graph-container,
+.graph-spin canvas {
+  pointer-events: none !important;
+}
 .graph-host.is-draw,
 .graph-host.is-draw canvas,
 .graph-host.is-select,
@@ -94,12 +106,24 @@ html[data-theme="dark"] {
   background: #f3f2f1;
 }
 
+.edit-float {
+  overscroll-behavior: contain;
+}
+
 .edit-float.is-tinted {
   border: 2px solid var(--edit-accent);
   background: color-mix(in srgb, var(--edit-accent) 22%, #ffffff);
 }
 html[data-theme="dark"] .edit-float.is-tinted {
   background: color-mix(in srgb, var(--edit-accent) 28%, #2a2a2a);
+}
+
+.left-panel-bottom.is-tinted {
+  border-top-color: var(--edit-accent);
+  background: color-mix(in srgb, var(--edit-accent) 22%, var(--card));
+}
+html[data-theme="dark"] .left-panel-bottom.is-tinted {
+  background: color-mix(in srgb, var(--edit-accent) 28%, var(--card));
 }
 
 .edit-size-node {
@@ -132,6 +156,17 @@ html[data-theme="dark"] .edit-float.is-tinted {
 .ctx-flyout:focus-within .ctx-sub {
   display: block;
 }
+/* TanStack Devtools FAB — bottom-right, slightly smaller */
+button[aria-label="Open TanStack Devtools"] {
+  position: fixed !important;
+  inset: auto 12px 12px auto !important;
+  width: 2.625rem !important;
+  height: 2.625rem !important;
+  min-width: 2.625rem !important;
+  min-height: 2.625rem !important;
+  transform: none !important;
+}
+
 .ctx .ctx-picker-row button.size-dot.on .size-dot-inner {
   box-shadow: 0 0 0 1px var(--card), 0 0 0 2px var(--text);
 }

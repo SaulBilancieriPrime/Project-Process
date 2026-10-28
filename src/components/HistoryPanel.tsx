@@ -23,14 +23,14 @@ export default function HistoryPanel({ open, history, onUndo, onClose }: Props) 
       </div>
       {!history.length ? (
         <section>
-          <h3 className={sideH2}>Unsaved actions</h3>
-          <p className={filterHint}>No actions since the last confirmed save. Edits you make will list here until you Save.</p>
+          <h3 className={sideH2}>Recent actions</h3>
+          <p className={filterHint}>No local undo steps yet. Edits you make list here and also write to the shared map.</p>
         </section>
       ) : (
         <section>
-          <h3 className={sideH2}>Unsaved actions</h3>
+          <h3 className={sideH2}>Recent actions</h3>
           <p className={filterHint}>
-            {history.length} action{history.length === 1 ? "" : "s"} since last save. Undo restores the map to just before that action and drops everything after it.
+            {history.length} local action{history.length === 1 ? "" : "s"}. Undo restores the map to just before that action and syncs the shared map.
           </p>
           <ul className="mt-2.5 mb-0 flex list-none flex-col gap-2 p-0">
             {items.map((action) => (

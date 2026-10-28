@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import CanvasTools from "./components/CanvasTools";
+import { useStore } from "@tanstack/react-store";
 import EditLinkPanel from "./components/EditLinkPanel";
-import EditNodePanel, { type NodeEditPreview } from "./components/EditNodePanel";
-import FilterPanel from "./components/FilterPanel";
+import { type NodeEditPreview } from "./components/EditNodePanel";
+import LeftSidePanel from "./components/LeftSidePanel";
 import PlusMenu from "./components/PlusMenu";
 import PlusMenuButton from "./components/PlusMenuButton";
+import ViewCompass from "./components/ViewCompass";
 import GraphCanvas, { type GraphHandle } from "./components/GraphCanvas";
 import Header from "./components/Header";
 import HistoryPanel from "./components/HistoryPanel";
 import InfoPanel from "./components/InfoPanel";
+import LinkContextMenu from "./components/LinkContextMenu";
 import NodeContextMenu from "./components/NodeContextMenu";
 import NodePreviewPanel from "./components/NodePreviewPanel";
-import SaveConfirmModal from "./components/SaveConfirmModal";
+import SelectionPanel from "./components/SelectionPanel";
 import {
   ACTION_COALESCE_MS,
   actionKindFromChanges,
@@ -20,19 +22,23 @@ import {
   mergeAction,
   type HistoryAction,
 } from "./graph/history";
+import { fetchSharedMap, postMapTx, txFromSnapshots, type MapTx } from "./lib/mapSync";
 import { nodeColor } from "./graph/colors";
+import type { WorkflowStatus } from "./graph/workflowStatus";
 import { addChild, addLink, blankNode, deleteNode, insertNodeBetween } from "./graph/ops";
-import { linkEnds } from "./graph/visibility";
+import { degToRad, rotatePoint } from "./graph/viewRotation";
+import { isFiltered, linkEnds } from "./graph/visibility";
 import {
   downloadJson,
   loadDocument,
-  loadTheme,
+  loadViewRotation,
   readJsonFile,
   newId,
   saveDocument,
-  saveTheme,
+  saveViewRotation,
 } from "./storage";
-import { ctxBox, cx, dangerText, ghostBtn, menuItem, plusMenuBox } from "./styles";
+import { patchUi, showToast as pushToast, toggleHistory, toggleInfo, uiStore } from "./store/ui";
+import { ctxBox, cx } from "./styles";
 import type { ArrowStyle, GraphLink, GraphNode, GraphSettings } from "./types";
 
 type MenuState =
@@ -49,7 +55,10 @@ export default function App() {
   const [nodes, setNodes] = useState<GraphNode[]>(initial.nodes);
   const [links, setLinks] = useState<GraphLink[]>(initial.links);
   const [settings, setSettings] = useState<GraphSettings>(initial.settings);
-  const [theme, setTheme] = useState<"light" | "dark">(loadTheme);
+  const theme = useStore(uiStore, (s) => s.theme);
+  const historyOpen = useStore(uiStore, (s) => s.historyOpen);
+  const infoOpen = useStore(uiStore, (s) => s.infoOpen);
+  const toast = useStore(uiStore, (s) => s.toast);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -59,35 +68,51 @@ export default function App() {
   const [placing, setPlacing] = useState<PlaceState | null>(null);
   const [plusOpen, setPlusOpen] = useState(false);
   const [menu, setMenu] = useState<MenuState | null>(null);
-  const [saveOpen, setSaveOpen] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [infoOpen, setInfoOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [colors, setColors] = useState<string[]>([]);
-  const [hideFiltered, setHideFiltered] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
-  const [dirty, setDirty] = useState(false);
+  const [statusFilters, setStatusFilters] = useState<WorkflowStatus[]>([]);
+  const [employeeFilter, setEmployeeFilter] = useState<string | null>(null);
+  const hideFiltered = Boolean(search.trim()) || statusFilters.length > 0 || employeeFilter != null;
+  const [liveStatus, setLiveStatus] = useState<"offline" | "live" | "syncing">("offline");
   const [size, setSize] = useState({ w: 1200, h: 800 });
   const [zoom, setZoom] = useState(1);
+  const [viewRotation, setViewRotation] = useState(loadViewRotation);
 
   const stageRef = useRef<HTMLDivElement>(null);
   const graphRef = useRef<GraphHandle | undefined>(undefined);
   const importRef = useRef<HTMLInputElement>(null);
   const persistTimer = useRef<number | null>(null);
+  const persistChain = useRef(Promise.resolve());
+  const revisionRef = useRef(0);
+  const hydratedRef = useRef(false);
+  const syncingRef = useRef(false);
+  const offlineToastRef = useRef(false);
+  const lastPosHash = useRef("");
   const fittedOnce = useRef(false);
   const editSaveRef = useRef<(() => void) | null>(null);
   const [actions, setActions] = useState<HistoryAction[]>([]);
+  const [future, setFuture] = useState<HistoryAction[]>([]);
   const [editLocked, setEditLocked] = useState(false);
-  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewAnchorId, setPreviewAnchorId] = useState<string | null>(null);
+  const previewOverRef = useRef(false);
   const [pendingEdit, setPendingEdit] = useState<PendingEdit | null>(null);
   const [editVisual, setEditVisual] = useState<NodeEditPreview | null>(null);
 
   const editing = nodes.find((n) => n.id === editingId) ?? null;
   const editingLink = links.find((l) => l.id === editingLinkId) ?? null;
-  const preview =
-    previewOpen && !editingLink && !menu && !placing && !connect && selectedIds.length === 1
-      ? nodes.find((n) => n.id === selectedIds[0]) ?? null
-      : null;
+
+  useEffect(() => {
+    if (hoveredId) {
+      setPreviewAnchorId(hoveredId);
+      return;
+    }
+    if (previewOverRef.current) return;
+    const timer = window.setTimeout(() => setPreviewAnchorId(null), 120);
+    return () => window.clearTimeout(timer);
+  }, [hoveredId]);
+
+  const previewTargetId =
+    !editingLink && !menu && !placing && !connect && !editLocked ? (hoveredId ?? previewAnchorId) : null;
+  const preview = previewTargetId ? nodes.find((n) => n.id === previewTargetId) ?? null : null;
   const graphNodes = useMemo(() => {
     if (!editVisual || !editingId) return nodes;
     return nodes.map((n) => (n.id === editingId ? { ...n, size: editVisual.size, color: editVisual.color } : n));
@@ -96,8 +121,11 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
-    saveTheme(theme);
   }, [theme]);
+
+  useEffect(() => {
+    saveViewRotation(viewRotation);
+  }, [viewRotation]);
 
   useEffect(() => {
     const el = stageRef.current;
@@ -113,16 +141,13 @@ export default function App() {
   useEffect(() => {
     if (persistTimer.current) window.clearTimeout(persistTimer.current);
     persistTimer.current = window.setTimeout(() => {
-      saveDocument({ nodes, links, settings });
+      const doc = { nodes, links, settings };
+      saveDocument(doc);
     }, 450);
     return () => {
       if (persistTimer.current) window.clearTimeout(persistTimer.current);
     };
   }, [nodes, links, settings]);
-
-  useEffect(() => {
-    setDirty(actions.length > 0);
-  }, [actions.length]);
 
   useEffect(() => {
     if (!editing && !editingLink) setEditLocked(false);
@@ -132,7 +157,7 @@ export default function App() {
     setEditLocked(false);
     setEditingId(null);
     setEditingLinkId(null);
-    setPreviewOpen(false);
+    setPreviewAnchorId(null);
     setPendingEdit(null);
     setEditVisual(null);
   }, []);
@@ -159,7 +184,7 @@ export default function App() {
   }, [pendingEdit, editingId, editingLinkId]);
 
   const dismissPreview = useCallback(() => {
-    setPreviewOpen(false);
+    setPreviewAnchorId(null);
     setSelectedIds([]);
     setPicked(null);
     setEditingId(null);
@@ -202,21 +227,23 @@ export default function App() {
         setEditingLinkId(null);
         setPicked(null);
         setSelectedIds([]);
-        setPreviewOpen(false);
+        setPreviewAnchorId(null);
         setPendingEdit(null);
         setEditVisual(null);
-        setSaveOpen(false);
-        setHistoryOpen(false);
-        setInfoOpen(false);
+        patchUi({ historyOpen: false, infoOpen: false });
       }
       if (typing) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
-        if (editLocked) {
-          editSaveRef.current?.();
-          return;
-        }
-        requestSave();
+        if (editLocked) editSaveRef.current?.();
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
+        e.preventDefault();
+        if (!editLocked) undoLast();
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey))) {
+        e.preventDefault();
+        if (!editLocked) redoLast();
       }
       if (e.key === "Delete") {
         if (editLocked || editingLinkId) return;
@@ -232,8 +259,97 @@ export default function App() {
   });
 
   const showToast = useCallback((msg: string) => {
-    setToast(msg);
-    window.setTimeout(() => setToast(null), 2400);
+    pushToast(msg);
+  }, []);
+
+  const persistTx = useCallback((tx: MapTx | null) => {
+    if (!tx || !hydratedRef.current) return;
+    persistChain.current = persistChain.current.then(async () => {
+      syncingRef.current = true;
+      setLiveStatus("syncing");
+      try {
+        const result = await postMapTx(tx);
+        if (result.ok) {
+          revisionRef.current = result.revision;
+          setLiveStatus("live");
+          offlineToastRef.current = false;
+          return;
+        }
+        setLiveStatus("offline");
+        if (!offlineToastRef.current) {
+          offlineToastRef.current = true;
+          showToast("Working offline — Azure SQL unavailable");
+        }
+      } catch {
+        setLiveStatus("offline");
+      } finally {
+        syncingRef.current = false;
+      }
+    });
+  }, [showToast]);
+
+  const persistPositions = useCallback((moved: GraphNode[]) => {
+    if (!hydratedRef.current || !moved.length) return;
+    const hash = JSON.stringify(moved.map((n) => [n.id, n.x, n.y, n.fx, n.fy]));
+    if (hash === lastPosHash.current) return;
+    lastPosHash.current = hash;
+    persistTx({ label: "Updated positions", upsertNodes: moved });
+  }, [persistTx]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const map = await fetchSharedMap();
+      if (cancelled) return;
+      if (!map.ok) {
+        setLiveStatus("offline");
+        return;
+      }
+      if (map.unchanged) return;
+      setNodes(map.nodes);
+      setLinks(map.links);
+      setSettings(map.settings);
+      setActions([]);
+      setFuture([]);
+      revisionRef.current = map.revision;
+      hydratedRef.current = true;
+      lastPosHash.current = JSON.stringify(map.nodes.map((n) => [n.id, n.x, n.y, n.fx, n.fy]));
+      saveDocument(map);
+      setLiveStatus("live");
+      fittedOnce.current = false;
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(async () => {
+      if (document.hidden || syncingRef.current || !hydratedRef.current) return;
+      const map = await fetchSharedMap(revisionRef.current);
+      if (!map.ok) {
+        setLiveStatus("offline");
+        return;
+      }
+      setLiveStatus("live");
+      if (map.unchanged) return;
+      setNodes(map.nodes);
+      setLinks(map.links);
+      setSettings(map.settings);
+      revisionRef.current = map.revision;
+      lastPosHash.current = JSON.stringify(map.nodes.map((n) => [n.id, n.x, n.y, n.fx, n.fy]));
+      saveDocument(map);
+      const live = liveGraphNodes();
+      for (const n of live) {
+        const match = map.nodes.find((item) => item.id === n.id);
+        if (!match) continue;
+        n.x = match.x;
+        n.y = match.y;
+        n.fx = match.fx;
+        n.fy = match.fy;
+      }
+    }, 2000);
+    return () => window.clearInterval(timer);
   }, []);
 
   function openContextMenu(next: MenuState) {
@@ -294,6 +410,8 @@ export default function App() {
     if (next.links) setLinks(afterLinks);
     if (next.settings) setSettings(afterSettings);
     if (!changes.length) return;
+    persistTx(txFromSnapshots(before, after, label));
+    setFuture([]);
     setActions((prev) => {
       const last = prev[prev.length - 1];
       if (
@@ -319,34 +437,56 @@ export default function App() {
     });
   }
 
-  function undoAction(id: string) {
-    const idx = actions.findIndex((a) => a.id === id);
-    if (idx < 0) return;
-    const target = actions[idx];
-    setNodes(target.before.nodes);
-    setLinks(target.before.links);
-    setSettings(target.before.settings);
-    setActions((prev) => prev.slice(0, idx));
-    setEditingId((cur) => (cur && target.before.nodes.some((n) => n.id === cur) ? cur : null));
-    setEditingLinkId((cur) => (cur && target.before.links.some((l) => l.id === cur) ? cur : null));
-    setSelectedIds((prev) => prev.filter((item) => target.before.nodes.some((n) => n.id === item)));
+  function restoreSnapshot(snap: { nodes: GraphNode[]; links: GraphLink[]; settings: GraphSettings }, persistLabel?: string) {
+    if (persistLabel) persistTx(txFromSnapshots({ nodes, links, settings }, snap, persistLabel));
+    setNodes(snap.nodes);
+    setLinks(snap.links);
+    setSettings(snap.settings);
+    setEditingId((cur) => (cur && snap.nodes.some((n) => n.id === cur) ? cur : null));
+    setEditingLinkId((cur) => (cur && snap.links.some((l) => l.id === cur) ? cur : null));
+    setSelectedIds((prev) => prev.filter((item) => snap.nodes.some((n) => n.id === item)));
     setPicked((cur) => {
       if (!cur) return null;
-      if (cur.kind === "node" && !target.before.nodes.some((n) => n.id === cur.id)) return null;
-      if (cur.kind === "link" && !target.before.links.some((l) => l.id === cur.id)) return null;
+      if (cur.kind === "node" && !snap.nodes.some((n) => n.id === cur.id)) return null;
+      if (cur.kind === "link" && !snap.links.some((l) => l.id === cur.id)) return null;
       return cur;
     });
     setMenu(null);
     const live = liveGraphNodes();
     for (const n of live) {
-      const match = target.before.nodes.find((item) => item.id === n.id);
+      const match = snap.nodes.find((item) => item.id === n.id);
       if (!match) continue;
       n.x = match.x;
       n.y = match.y;
       n.fx = match.fx;
       n.fy = match.fy;
     }
+  }
+
+  function undoAction(id: string) {
+    const idx = actions.findIndex((a) => a.id === id);
+    if (idx < 0) return;
+    const target = actions[idx];
+    const dropped = actions.slice(idx);
+    restoreSnapshot(target.before, "Undid action");
+    setActions((prev) => prev.slice(0, idx));
+    setFuture((prev) => [...dropped, ...prev]);
     showToast("Undid action");
+  }
+
+  function undoLast() {
+    const last = actions[actions.length - 1];
+    if (!last) return;
+    undoAction(last.id);
+  }
+
+  function redoLast() {
+    const next = future[0];
+    if (!next) return;
+    restoreSnapshot(next.after, "Redid action");
+    setFuture((prev) => prev.slice(1));
+    setActions((prev) => [...prev, next]);
+    showToast("Redid action");
   }
 
   function patchSettings(patch: Partial<GraphSettings>) {
@@ -371,8 +511,6 @@ export default function App() {
       label = `Changed status of ${name}`;
     } else if (patch.size !== undefined && Object.keys(patch).length === 1) {
       label = `Resized ${name}`;
-    } else if (patch.type && Object.keys(patch).length === 1) {
-      label = `Changed type of ${name}`;
     } else if (patch.employee !== undefined && Object.keys(patch).length <= 2) {
       label = `Assigned ${name}`;
     }
@@ -382,22 +520,17 @@ export default function App() {
     Object.assign(live, patch);
   }
 
-  function requestSave() {
-    if (editLocked) {
-      editSaveRef.current?.();
-      return;
+  function updateSelectedNodes(patch: Partial<GraphNode>, label: string) {
+    const ids = new Set(selectedIds);
+    applyGraph(
+      label,
+      { nodes: nodes.map((n) => (ids.has(n.id) ? { ...n, ...patch } : n)) },
+      `selection:${Object.keys(patch).sort().join(",")}`,
+    );
+    for (const id of selectedIds) {
+      const live = liveGraphNodes().find((n) => n.id === id);
+      if (live) Object.assign(live, patch);
     }
-    setSaveOpen(true);
-    setMenu(null);
-    setPlusOpen(false);
-  }
-
-  function commitSave() {
-    saveDocument({ nodes, links, settings });
-    setActions([]);
-    setSaveOpen(false);
-    setDirty(false);
-    showToast("Saved locally");
   }
 
   function addLooseNode(at: { x: number; y: number }) {
@@ -414,7 +547,6 @@ export default function App() {
       setSelectedIds([next.id]);
       setPicked({ kind: "node", id: next.id });
       setEditingId(next.id);
-      setPreviewOpen(true);
       setEditVisual(null);
       setPlacing(null);
       return;
@@ -433,7 +565,6 @@ export default function App() {
     setSelectedIds([created.id]);
     setPicked({ kind: "node", id: created.id });
     setEditingId(created.id);
-    setPreviewOpen(true);
     setEditVisual(null);
     setPlacing(null);
   }
@@ -506,7 +637,6 @@ export default function App() {
     setSelectedIds([next.id]);
     setPicked({ kind: "node", id: next.id });
     setEditingId(next.id);
-    setPreviewOpen(true);
     setEditVisual(null);
     setEditingLinkId(null);
     setMenu(null);
@@ -517,6 +647,20 @@ export default function App() {
     applyGraph(
       "Edited connection",
       { links: links.map((l) => (l.id === id ? { ...l, ...patch } : l)) },
+      `link:${id}`,
+    );
+  }
+
+  function flipLink(id: string) {
+    applyGraph(
+      "Flipped connection",
+      {
+        links: links.map((l) => {
+          if (l.id !== id) return l;
+          const e = linkEnds(l);
+          return { ...l, source: e.target, target: e.source };
+        }),
+      },
       `link:${id}`,
     );
   }
@@ -533,13 +677,11 @@ export default function App() {
     setPlusOpen(false);
     if (additive) {
       setEditingId(null);
-      setPreviewOpen(false);
       setEditVisual(null);
       return;
     }
     if (editingId !== id) setEditVisual(null);
     setEditingId(id);
-    setPreviewOpen(true);
   }
 
   function pickLink(id: string) {
@@ -550,12 +692,10 @@ export default function App() {
     setEditVisual(null);
     setMenu(null);
     setPlusOpen(false);
-    setPreviewOpen(false);
   }
 
   function requestLinkEdit(id: string) {
     if (editLocked) return;
-    setPreviewOpen(false);
     setMenu(null);
     setPlusOpen(false);
     if (editingLinkId === id && editingId === null) return;
@@ -576,22 +716,69 @@ export default function App() {
     return liveGraphNodes().find((n) => n.id === id) ?? nodes.find((n) => n.id === id);
   }
 
-  function focusNode(id: string) {
-    const node = liveNode(id);
-    pickNode(id);
-    if (!node || node.x == null || node.y == null) return;
-    graphRef.current?.centerAt(node.x, node.y, 500);
-    graphRef.current?.zoom(2.1, 500);
-  }
+  const fitGraph = useCallback(() => {
+    const fg = graphRef.current as
+      | (GraphHandle & {
+          centerAt?: (x: number, y: number, ms?: number) => void;
+          zoom?: (k?: number, ms?: number) => number;
+        })
+      | undefined;
+    if (!fg || !size.w || !size.h) return;
 
-  function fitGraph() {
-    graphRef.current?.zoomToFit(400, 80);
-    window.setTimeout(() => {
-      const fg = graphRef.current as (GraphHandle & { zoom?: (k?: number, ms?: number) => number }) | undefined;
-      const k = fg?.zoom?.();
-      if (typeof k === "number" && k > 1.05) fg?.zoom?.(0.92, 280);
-    }, 420);
-  }
+    const filterOptions = { statusFilters, employeeEmail: employeeFilter };
+    const toFit = nodes.filter((n) => {
+      if (typeof n.x !== "number" || typeof n.y !== "number") return false;
+      if (hideFiltered && !isFiltered(n, search, settings.colorBy, filterOptions)) return false;
+      return true;
+    });
+
+    if (!toFit.length) {
+      showToast("Nothing to fit — clear search or filters");
+      return;
+    }
+
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (const n of toFit) {
+      minX = Math.min(minX, n.x!);
+      maxX = Math.max(maxX, n.x!);
+      minY = Math.min(minY, n.y!);
+      maxY = Math.max(maxY, n.y!);
+    }
+
+    const pad = 72;
+    const bboxW = Math.max(maxX - minX, 48);
+    const bboxH = Math.max(maxY - minY, 48);
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    const k = Math.min((size.w - pad * 2) / bboxW, (size.h - pad * 2) / bboxH, 8);
+    const zoomK = Math.max(0.12, k);
+
+    fg.centerAt?.(cx, cy, 400);
+    window.setTimeout(() => fg.zoom?.(zoomK, 400), 0);
+  }, [
+    nodes,
+    size.w,
+    size.h,
+    hideFiltered,
+    search,
+    settings.colorBy,
+    statusFilters,
+    employeeFilter,
+    showToast,
+  ]);
+
+  useEffect(() => {
+    if (!nodes.length || size.w < 200) return;
+    if (fittedOnce.current) return;
+    const timer = window.setTimeout(() => {
+      fitGraph();
+      fittedOnce.current = true;
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [nodes.length, size.w, size.h, fitGraph]);
 
   function reheat() {
     applyGraph("Reorganized layout", { settings: { ...settings, physics: true } }, "settings");
@@ -607,8 +794,9 @@ export default function App() {
 
   function screenOf(x: number, y: number) {
     const s = graphRef.current?.graph2ScreenCoords(x, y) ?? { x: 80, y: 80 };
+    const rotated = rotatePoint(s.x, s.y, size.w / 2, size.h / 2, degToRad(viewRotation));
     const rect = stageRef.current?.getBoundingClientRect();
-    return { left: (rect?.left ?? 0) + s.x, top: (rect?.top ?? 0) + s.y };
+    return { left: (rect?.left ?? 0) + rotated.x, top: (rect?.top ?? 0) + rotated.y };
   }
 
   const previewPos = useMemo(() => {
@@ -622,7 +810,7 @@ export default function App() {
     const r = Math.min(base * k, 6.5 + previewNode.size * 4.5 * enlarge);
     const gap = 14;
     const cardW = 240;
-    const cardH = 92;
+    const cardH = 84;
     let left = s.left + r + gap;
     let top = s.top - r - gap - cardH * 0.45;
     if (left + cardW > window.innerWidth - 12) {
@@ -638,7 +826,7 @@ export default function App() {
       left: Math.min(window.innerWidth - cardW - 12, Math.max(12, left)),
       top: Math.min(window.innerHeight - cardH - 12, Math.max(56, top)),
     };
-  }, [previewNode, size, zoom, settings.enlarge]);
+  }, [previewNode, size, zoom, settings.enlarge, viewRotation]);
 
   const editLinkPos = useMemo(() => {
     if (!editingLink) return { left: 80, top: 80 };
@@ -651,7 +839,7 @@ export default function App() {
       left: Math.min(window.innerWidth - 300, Math.max(12, s.left + 18)),
       top: Math.min(window.innerHeight - 260, Math.max(60, s.top - 20)),
     };
-  }, [editingLink, links, size, zoom]);
+  }, [editingLink, links, size, zoom, viewRotation]);
 
   const actionPos = useMemo(() => {
     if (selectedIds.length > 1) {
@@ -661,8 +849,8 @@ export default function App() {
       const y = lives.reduce((s, n) => s + (n.y ?? 0), 0) / lives.length;
       const s = screenOf(x, y);
       return {
-        left: Math.min(window.innerWidth - 200, Math.max(12, s.left + 16)),
-        top: Math.min(window.innerHeight - 56, Math.max(60, s.top - 28)),
+        left: Math.min(window.innerWidth - 232, Math.max(12, s.left + 16)),
+        top: Math.min(window.innerHeight - 220, Math.max(60, s.top - 28)),
       };
     }
     if (!picked) return { left: 80, top: 80 };
@@ -686,38 +874,88 @@ export default function App() {
       left: Math.min(window.innerWidth - 160, Math.max(12, s.left + 12)),
       top: Math.min(window.innerHeight - 56, Math.max(60, s.top - 18)),
     };
-  }, [picked, selectedIds, links, size, zoom]);
+  }, [picked, selectedIds, links, size, zoom, viewRotation]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <Header
         nodeCount={nodes.length}
         linkCount={links.length}
-        dirty={dirty}
+        liveStatus={liveStatus}
         historyCount={actions.length}
         historyOpen={historyOpen}
         infoOpen={infoOpen}
         theme={theme}
-        onTheme={setTheme}
-        onSave={requestSave}
+        onTheme={(next) => patchUi({ theme: next })}
         onExport={() => {
           downloadJson({ nodes, links, settings });
           showToast("Exported JSON");
         }}
         onImport={() => importRef.current?.click()}
-        onHistory={() => {
-          setHistoryOpen((v) => !v);
-          setInfoOpen(false);
-        }}
-        onInfo={() => {
-          setInfoOpen((v) => !v);
-          setHistoryOpen(false);
-        }}
+        onHistory={toggleHistory}
+        canUndo={actions.length > 0}
+        canRedo={future.length > 0}
+        onUndo={undoLast}
+        onRedo={redoLast}
+        onInfo={toggleInfo}
       />
 
-      <div className="stage relative min-h-0 flex-1 bg-[var(--graph-bg)]" ref={stageRef}>
+      <div className="flex min-h-0 min-w-0 flex-1">
+        <div className="flex h-full shrink-0">
+          <aside className="site-left-rail flex h-full w-[280px] shrink-0 flex-col border-r border-[var(--line)] bg-[var(--card)] px-2 py-2">
+            <LeftSidePanel
+              search={search}
+              statusFilters={statusFilters}
+              employeeFilter={employeeFilter}
+              nodes={nodes}
+              settings={settings}
+              colorBy={settings.colorBy}
+              editingNode={editing && !placing && !connect ? editing : null}
+              onSearch={setSearch}
+              onStatusFilters={setStatusFilters}
+              onEmployeeFilter={setEmployeeFilter}
+              onSettings={patchSettings}
+              onFit={fitGraph}
+              onReorg={reheat}
+              onTogglePhysics={() => {
+                const next = !settings.physics;
+                applyPhysicsFreeze(next);
+                applyGraph(next ? "Turned physics on" : "Turned physics off", { settings: { ...settings, physics: next } });
+                window.setTimeout(() => {
+                  applyPhysicsFreeze(next);
+                  if (next) graphRef.current?.d3ReheatSimulation();
+                }, 40);
+              }}
+              onToggleCards={() =>
+                applyGraph(settings.cardInfo ? "Hid cards" : "Showed cards", {
+                  settings: { ...settings, cardInfo: !settings.cardInfo },
+                })
+              }
+              onNodeSave={(patch) => {
+                if (editing) updateNode(editing.id, patch);
+              }}
+            />
+          </aside>
+          <div className="flex shrink-0 flex-col pt-2 pl-1.5">
+            <PlusMenuButton
+              open={plusOpen}
+              armed={Boolean(placing) || Boolean(connect)}
+              onOpen={(open) => {
+                if (open) {
+                  setMenu(null);
+                  setPicked(null);
+                }
+                setPlusOpen(open);
+              }}
+              onAddNode={(size) => startPlace(undefined, size)}
+              onLink={(arrows) => startLink(arrows)}
+            />
+          </div>
+        </div>
+
+        <div className="stage relative min-h-0 min-w-0 flex-1 overflow-hidden bg-[var(--graph-bg)]" ref={stageRef}>
         <div
-          className="graph-wrap absolute inset-0"
+          className="graph-wrap absolute inset-0 overflow-hidden"
           onContextMenu={(e) => e.preventDefault()}
         >
           <GraphCanvas
@@ -734,9 +972,11 @@ export default function App() {
             placeSize={placing?.size}
             linkArrows={connect?.arrows ?? "none"}
             search={search}
-            colors={colors}
+            statusFilters={statusFilters}
+            employeeFilter={employeeFilter}
             hideFiltered={hideFiltered}
             theme={theme}
+            rotation={degToRad(viewRotation)}
             width={size.w}
             height={size.h}
             graphRef={graphRef}
@@ -751,11 +991,9 @@ export default function App() {
               if (ids.length === 1) {
                 setPicked({ kind: "node", id: ids[0] });
                 setEditingId(ids[0]);
-                setPreviewOpen(true);
               } else {
                 setPicked(null);
                 setEditingId(null);
-                setPreviewOpen(false);
               }
               setEditVisual(null);
               setEditingLinkId(null);
@@ -786,6 +1024,19 @@ export default function App() {
                   }
                 }
               }
+              const moved: GraphNode[] = [];
+              for (const pos of positions) {
+                const model = nodes.find((n) => n.id === pos.id);
+                if (!model) continue;
+                moved.push({
+                  ...model,
+                  x: pos.x,
+                  y: pos.y,
+                  fx: settings.physics ? undefined : pos.x,
+                  fy: settings.physics ? undefined : pos.y,
+                });
+              }
+              persistPositions(moved);
             }}
             onSelectLink={pickLink}
             onHover={setHoveredId}
@@ -800,7 +1051,7 @@ export default function App() {
             }}
             onLinkMenu={(id, x, y) => openContextMenu({ kind: "link", id, x, y })}
             onBackgroundMenu={(x, y) => openContextMenu({ kind: "canvas", x, y })}
-            onBackground={(_x, _y, graph, dbl) => {
+            onBackground={(_x, _y, graph) => {
               if (editLocked) return;
               if (placing) {
                 addLooseNode(graph);
@@ -813,7 +1064,6 @@ export default function App() {
               setMenu(null);
               if (!editLocked) dismissEditPanel();
               dismissPreview();
-              if (dbl) addLooseNode(graph);
             }}
             onPlace={addLooseNode}
             onDragEnd={(id, x, y) => {
@@ -838,6 +1088,17 @@ export default function App() {
                   live.fy = undefined;
                 }
               }
+              if (model) {
+                persistPositions([
+                  {
+                    ...model,
+                    x,
+                    y,
+                    fx: settings.physics ? undefined : x,
+                    fy: settings.physics ? undefined : y,
+                  },
+                ]);
+              }
             }}
             onConnectTarget={(id) => {
               if (!connect) return;
@@ -861,7 +1122,9 @@ export default function App() {
                   n.y = match.y;
                 }
               }
-              saveDocument({ nodes, links, settings });
+              const doc = { nodes, links, settings };
+              saveDocument(doc);
+              persistPositions(nodes);
               if (!fittedOnce.current) {
                 fittedOnce.current = true;
                 fitGraph();
@@ -869,6 +1132,8 @@ export default function App() {
             }}
           />
         </div>
+
+        <ViewCompass degrees={viewRotation} onChange={setViewRotation} />
 
         {(placing || connect || selectedIds.length > 1) && (
           <div className="absolute top-3 left-1/2 z-[8] -translate-x-1/2 rounded-full bg-[rgba(27,58,107,0.92)] px-3 py-1.5 text-xs font-bold tracking-wide text-[#f3f2f1]">
@@ -882,63 +1147,25 @@ export default function App() {
           </div>
         )}
 
-        <PlusMenuButton
-          open={plusOpen}
-          armed={Boolean(placing) || Boolean(connect)}
-          onOpen={(open) => {
-            if (open) {
-              setMenu(null);
-              setPicked(null);
-            }
-            setPlusOpen(open);
-          }}
-          onAddNode={startPlace}
-          onLink={(arrows) => startLink(arrows)}
-        />
-
-        <div className="absolute top-14 left-3 z-[8] flex w-[260px] max-h-[calc(100%-68px)] flex-col gap-2">
-          <FilterPanel
-            nodes={nodes}
-            settings={settings}
-            search={search}
-            colors={colors}
-            hideFiltered={hideFiltered}
-            selectedIds={selectedIds}
-            onSearch={setSearch}
-            onColors={setColors}
-            onHideFiltered={setHideFiltered}
-            onSettings={patchSettings}
-            onFocus={focusNode}
-          />
-          <CanvasTools
-            physics={settings.physics}
-            cardInfo={Boolean(settings.cardInfo)}
-            onFit={fitGraph}
-            onReorg={reheat}
-            onPhysics={() => {
-              const next = !settings.physics;
-              applyPhysicsFreeze(next);
-              applyGraph(next ? "Turned physics on" : "Turned physics off", { settings: { ...settings, physics: next } });
-              window.setTimeout(() => {
-                applyPhysicsFreeze(next);
-                if (next) graphRef.current?.d3ReheatSimulation();
-              }, 40);
-            }}
-            onCardInfo={() => applyGraph(settings.cardInfo ? "Hid cards" : "Showed cards", { settings: { ...settings, cardInfo: !settings.cardInfo } })}
-          />
-        </div>
-
+      </div>
       </div>
 
-      {selectedIds.length > 1 && !menu && !editing && !editingLink && !connect && !placing && (
-        <div className="item-actions fixed z-[28] flex gap-1 rounded-[10px] border border-[var(--line)] bg-[color-mix(in_srgb,var(--card)_94%,transparent)] p-1 shadow-[var(--shadow)] backdrop-blur-[10px]" style={actionPos}>
-          <button type="button" className={ghostBtn} disabled>
-            {selectedIds.length} selected
-          </button>
-          <button type="button" className={cx(ghostBtn, dangerText)} onClick={() => removeNodes(selectedIds)}>
-            Delete
-          </button>
-        </div>
+      {selectedIds.length > 1 && !menu && !editingLink && !connect && !placing && (
+        <SelectionPanel
+          nodes={nodes.filter((n) => selectedIds.includes(n.id))}
+          colorBy={settings.colorBy}
+          style={actionPos}
+          onStatus={(_status, color) =>
+            updateSelectedNodes({ color }, `Changed status of ${selectedIds.length} nodes`)
+          }
+          onAssign={(next) =>
+            updateSelectedNodes(
+              { employee: next.name, employeeEmail: next.email },
+              next.name ? `Assigned ${selectedIds.length} nodes` : `Cleared assignees on ${selectedIds.length} nodes`,
+            )
+          }
+          onDelete={() => removeNodes(selectedIds)}
+        />
       )}
 
       {menu?.kind === "node" && (() => {
@@ -957,26 +1184,29 @@ export default function App() {
         );
       })()}
 
-      {menu?.kind === "link" && (
-        <div className={cx("ctx", ctxBox)} style={{ left: menu.x, top: menu.y }}>
-          <button type="button" className={menuItem} onClick={() => insertNodeOnLink(menu.id)}>
-            Insert node here
-          </button>
-          <div className="sep mx-0.5 my-1 h-px bg-[var(--line)]" />
-          <button
-            type="button"
-            className={cx(menuItem, dangerText)}
-            onClick={() => removeLink(menu.id)}
-          >
-            Delete connection
-          </button>
-        </div>
-      )}
+      {menu?.kind === "link" && (() => {
+        const ctxLink = links.find((l) => l.id === menu.id);
+        if (!ctxLink) return null;
+        return (
+          <LinkContextMenu
+            x={menu.x}
+            y={menu.y}
+            arrows={ctxLink.arrows}
+            onArrows={(arrows) => {
+              updateLink(menu.id, { arrows });
+              setMenu(null);
+            }}
+            onFlip={() => flipLink(menu.id)}
+            onInsert={() => insertNodeOnLink(menu.id)}
+            onDelete={() => removeLink(menu.id)}
+          />
+        );
+      })()}
 
       {menu?.kind === "canvas" && (
-        <div className={cx("plus-menu plus-menu-floating fixed z-40", plusMenuBox)} style={{ left: menu.x, top: menu.y }}>
+        <div className={cx("plus-menu plus-menu-floating ctx", ctxBox, "w-[196px] min-w-0 rounded-lg p-1")} style={{ left: menu.x, top: menu.y }}>
           <PlusMenu
-            onAddNode={startPlace}
+            onAddNode={(size) => startPlace(undefined, size)}
             onLink={(arrows) => startLink(arrows)}
             onClose={() => setMenu(null)}
           />
@@ -999,27 +1229,13 @@ export default function App() {
           node={previewNode}
           colorBy={settings.colorBy}
           style={previewPos}
-        />
-      )}
-
-      {editing && !placing && !connect && (
-        <EditNodePanel
-          key={editing.id}
-          node={editing}
-          colorBy={settings.colorBy}
-          saveRef={editSaveRef}
-          onDirty={setEditLocked}
-          onPreview={setEditVisual}
-          onSave={(patch) => {
-            updateNode(editing.id, patch);
-            setEditVisual(null);
+          onPointerEnter={() => {
+            previewOverRef.current = true;
           }}
-          onClose={() => {
-            dismissEditPanel();
-            setSelectedIds([]);
-            setPicked(null);
+          onPointerLeave={() => {
+            previewOverRef.current = false;
+            if (!hoveredId) setPreviewAnchorId(null);
           }}
-          onDelete={() => removeNode(editing.id, false)}
         />
       )}
 
@@ -1045,17 +1261,11 @@ export default function App() {
         open={historyOpen}
         history={actions}
         onUndo={undoAction}
-        onClose={() => setHistoryOpen(false)}
+        onClose={() => patchUi({ historyOpen: false })}
       />
 
-      <InfoPanel open={infoOpen} onClose={() => setInfoOpen(false)} />
+      <InfoPanel open={infoOpen} onClose={() => patchUi({ infoOpen: false })} />
 
-      <SaveConfirmModal
-        open={saveOpen}
-        changes={actions}
-        onConfirm={commitSave}
-        onContinue={() => setSaveOpen(false)}
-      />
       {toast && <div className="fixed bottom-[18px] left-1/2 z-[80] -translate-x-1/2 rounded-lg bg-[#1b1b1b] px-3 py-2 text-xs text-white dark:bg-[#f3f2f1] dark:text-[#1b1b1b]">{toast}</div>}
       <input
         ref={importRef}
@@ -1072,6 +1282,9 @@ export default function App() {
             setLinks(doc.links);
             setSettings(doc.settings);
             setActions([]);
+            setFuture([]);
+            fittedOnce.current = false;
+            persistTx({ label: "Imported graph", replace: doc });
             showToast("Imported graph");
           } catch {
             showToast("Could not import that file");

@@ -1,32 +1,25 @@
 import type { ArrowStyle } from "../types";
-import { menuItem } from "../styles";
-import LinkMenuOptions from "./LinkMenuOptions";
+import AddGraphActions from "./AddGraphActions";
 
 type Props = {
-  onAddNode: () => void;
+  accent?: string;
+  onAddNode: (size: number) => void;
   onLink: (arrows: ArrowStyle) => void;
   onClose: () => void;
 };
 
-export default function PlusMenu({ onAddNode, onLink, onClose }: Props) {
+export default function PlusMenu({ accent, onAddNode, onLink, onClose }: Props) {
   return (
-    <>
-      <button
-        type="button"
-        className={menuItem}
-        onClick={() => {
-          onAddNode();
-          onClose();
-        }}
-      >
-        Add node
-      </button>
-      <LinkMenuOptions
-        onLink={(arrows) => {
-          onLink(arrows);
-          onClose();
-        }}
-      />
-    </>
+    <AddGraphActions
+      accent={accent}
+      onAddNode={(size) => {
+        onAddNode(size);
+        onClose();
+      }}
+      onLink={(arrows) => {
+        onLink(arrows);
+        onClose();
+      }}
+    />
   );
 }

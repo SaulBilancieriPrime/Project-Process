@@ -1,6 +1,10 @@
+import { nodeWorkflowStatus, workflowStatusColor } from "./workflowStatus";
 import type { ColorBy, GraphNode, NodeKind } from "../types";
 
 export const LEVEL_COLORS = ["#f43f5e", "#f59e0b", "#34d399"];
+
+/** Shared fill for every canvas node; status is drawn as the border. */
+export const NODE_FILL = "#5b9bd5";
 
 export const SIZE_PRESETS = [
   { value: 0.5, label: "XS", dot: 8 },
@@ -37,11 +41,7 @@ export function normalizeHex(hex: string) {
 }
 
 export function nodeColor(node: GraphNode, colorBy: ColorBy) {
-  if (colorBy === "custom" && node.color) return node.color;
-  if (colorBy === "type") return node.color || TYPE_COLORS[node.type];
-  return (
-    node.color || LEVEL_COLORS[Math.min(node.level, LEVEL_COLORS.length - 1)]
-  );
+  return workflowStatusColor(nodeWorkflowStatus(node, colorBy));
 }
 
 export function hexToRgb(hex: string) {

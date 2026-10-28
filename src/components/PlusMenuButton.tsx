@@ -1,13 +1,13 @@
 import { useEffect, useRef } from "react";
 import type { ArrowStyle } from "../types";
-import { cx, plusMenuBox, toolBtn, toolBtnOn } from "../styles";
+import { cx, toolBtn, toolBtnOn } from "../styles";
 import PlusMenu from "./PlusMenu";
 
 type Props = {
   open: boolean;
   armed: boolean;
   onOpen: (open: boolean) => void;
-  onAddNode: () => void;
+  onAddNode: (size: number) => void;
   onLink: (arrows: ArrowStyle) => void;
 };
 
@@ -26,8 +26,19 @@ export default function PlusMenuButton({ open, armed, onOpen, onAddNode, onLink 
     };
   }, [open, onOpen]);
 
+  function openMenu(e: { preventDefault(): void; stopPropagation(): void }) {
+    e.preventDefault();
+    e.stopPropagation();
+    onOpen(true);
+  }
+
   return (
-    <div className="plus-wrap absolute top-3 left-3 z-[9]" ref={wrapRef}>
+    <div
+      className="plus-wrap relative z-[9] shrink-0"
+      ref={wrapRef}
+      onMouseEnter={() => onOpen(true)}
+      onMouseLeave={() => onOpen(false)}
+    >
       <button
         type="button"
         className={cx(
@@ -37,15 +48,13 @@ export default function PlusMenuButton({ open, armed, onOpen, onAddNode, onLink 
         aria-label="Add"
         aria-expanded={open}
         onMouseDown={(e) => e.stopPropagation()}
-        onClick={(e) => {
-          e.stopPropagation();
-          onOpen(!open);
-        }}
+        onClick={openMenu}
+        onContextMenu={openMenu}
       >
         +
       </button>
       {open && (
-        <div className={cx("plus-menu absolute top-[calc(100%+6px)] left-0", plusMenuBox)}>
+        <div className="plus-menu absolute top-[calc(100%+6px)] left-0 z-40 w-[196px] rounded-lg border border-[var(--line)] bg-[var(--card)] p-1 shadow-[var(--shadow)]">
           <PlusMenu
             onAddNode={onAddNode}
             onLink={onLink}

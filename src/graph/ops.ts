@@ -1,11 +1,12 @@
 import { sizeForLevel } from "./colors";
 import { descendantsOf, linkEnds } from "./visibility";
+import { graphLinkSchema, graphNodeSchema } from "../schema/graph";
 import { newId } from "../storage";
 import type { GraphLink, GraphNode, NodeKind } from "../types";
 
 export function blankNode(partial: Partial<GraphNode> & { title?: string }): GraphNode {
   const level = partial.level ?? 0;
-  return {
+  return graphNodeSchema.parse({
     id: partial.id ?? newId(),
     title: partial.title ?? "New idea",
     description: partial.description ?? "",
@@ -20,7 +21,7 @@ export function blankNode(partial: Partial<GraphNode> & { title?: string }): Gra
     y: partial.y,
     fx: partial.fx,
     fy: partial.fy,
-  };
+  });
 }
 
 export function addChild(
@@ -45,7 +46,7 @@ export function addChild(
   });
   return {
     nodes: [...nodes, child],
-    links: [...links, { id: newId(), source: parent.id, target: child.id, kind: "parent", arrows: "none" }],
+    links: [...links, graphLinkSchema.parse({ id: newId(), source: parent.id, target: child.id, kind: "parent", arrows: "none" })],
     id: child.id,
   };
 }
@@ -74,8 +75,8 @@ export function insertNodeBetween(
 
   const rest = links.filter((l) => l.id !== linkId);
   const split: GraphLink[] = [
-    { id: newId(), source: e.source, target: mid.id, kind: link.kind, arrows: link.arrows },
-    { id: newId(), source: mid.id, target: e.target, kind: link.kind, arrows: link.arrows },
+    graphLinkSchema.parse({ id: newId(), source: e.source, target: mid.id, kind: link.kind, arrows: link.arrows }),
+    graphLinkSchema.parse({ id: newId(), source: mid.id, target: e.target, kind: link.kind, arrows: link.arrows }),
   ];
 
   return { nodes: [...nodes, mid], links: [...rest, ...split], id: mid.id };
@@ -94,7 +95,7 @@ export function addLink(
     return (e.source === source && e.target === target) || (e.source === target && e.target === source);
   });
   if (exists) return links;
-  return [...links, { id: newId(), source, target, kind, arrows }];
+  return [...links, graphLinkSchema.parse({ id: newId(), source, target, kind, arrows })];
 }
 
 function mergeLinkThroughNode(links: GraphLink[], nodeId: string) {
