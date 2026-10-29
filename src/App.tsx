@@ -18,6 +18,7 @@ import SelectionPanel from "./components/SelectionPanel";
 import SyncChangesFeed from "./components/SyncChangesFeed";
 import { nodeColor } from "./graph/colors";
 import type { WorkflowStatus } from "./graph/workflowStatus";
+import { UNGROUPED_FILTER, groupTitle, pruneEmptyGroups } from "./graph/groups";
 import { addChild, addLink, blankNode, deleteNode, insertNodeBetween } from "./graph/ops";
 import { mergeViewSettings } from "./graph/viewSettings";
 import { degToRad, rotatePoint, viewCoverOffset } from "./graph/viewRotation";
@@ -29,6 +30,7 @@ import {
   downloadJson,
   loadViewRotation,
   loadViewSettings,
+  newId,
   readJsonFile,
   saveDocument,
   saveViewRotation,
@@ -46,7 +48,7 @@ import {
 } from "./store/graph";
 import { patchUi, showToast, toggleHistory, toggleInfo, uiStore } from "./store/ui";
 import { ctxBox, cx } from "./styles";
-import type { ArrowStyle, GraphLink, GraphNode, GraphSettings } from "./types";
+import type { ArrowStyle, GraphGroup, GraphLink, GraphNode, GraphSettings } from "./types";
 
 type MenuState =
   | { kind: "node"; id: string; x: number; y: number }
@@ -62,6 +64,7 @@ const POSITION_EPSILON = 0.5;
 export default function App() {
   const nodes = useStore(graphStore, (s) => s.nodes);
   const links = useStore(graphStore, (s) => s.links);
+  const groups = useStore(graphStore, (s) => s.groups ?? []);
   const actions = useStore(graphStore, (s) => s.actions);
   const future = useStore(graphStore, (s) => s.future);
   const hydration = useStore(graphStore, (s) => s.hydration);
@@ -83,8 +86,10 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [statusFilters, setStatusFilters] = useState<WorkflowStatus[]>([]);
   const [employeeFilter, setEmployeeFilter] = useState<string | null>(null);
+  const [groupFilters, setGroupFilters] = useState<string[]>([]);
   const [draftPrompt, setDraftPrompt] = useState<{ proceed: () => void } | null>(null);
-  const hideFiltered = Boolean(search.trim()) || statusFilters.length > 0 || employeeFilter != null;
+  const hideFiltered =
+    Boolean(search.trim()) || statusFilters.length > 0 || employeeFilter != null || groupFilters.length > 0;
   const [size, setSize] = useState({ w: 1200, h: 800 });
   const [zoom, setZoom] = useState(1);
   const [viewRotation, setViewRotation] = useState(loadViewRotation);
@@ -168,12 +173,12 @@ export default function App() {
   useEffect(() => {
     if (persistTimer.current) window.clearTimeout(persistTimer.current);
     persistTimer.current = window.setTimeout(() => {
-      saveDocument({ nodes, links, settings });
+      saveDocument({ nodes, links, groups, settings });
     }, 450);
     return () => {
       if (persistTimer.current) window.clearTimeout(persistTimer.current);
     };
-  }, [nodes, links, settings]);
+  }, [nodes, links, groups, settings]);
 
   useEffect(() => {
     if (!editing && !editingLink) setEditLocked(false);
@@ -197,7 +202,11 @@ export default function App() {
       if (cur.kind === "link" && !linkIds.has(cur.id)) return null;
       return cur;
     });
-  }, [nodeById, links]);
+    const groupIds = new Set(groups.map((g) => g.id));
+    setGroupFilters((prev) =>
+      prev.filter((id) => id === UNGROUPED_FILTER || groupIds.has(id)),
+    );
+  }, [nodeById, links, groups]);
 
   const dismissEditPanel = useCallback(() => {
     setEditLocked(false);
@@ -359,19 +368,32 @@ export default function App() {
       label = `Resized ${name}`;
     } else if (patch.employee !== undefined && Object.keys(patch).length <= 2) {
       label = `Assigned ${name}`;
+    } else if (patch.groupId !== undefined && Object.keys(patch).length === 1) {
+      const groupName = patch.groupId
+        ? groupTitle(graphStore.state.groups.find((g) => g.id === patch.groupId)?.title)
+        : null;
+      label = groupName ? `Moved ${name} into ${groupName}` : `Ungrouped ${name}`;
     }
+    const nextNodes = graphStore.state.nodes.map((n) => (n.id === id ? { ...n, ...patch } : n));
     commitGraph(
       label,
-      { nodes: graphStore.state.nodes.map((n) => (n.id === id ? { ...n, ...patch } : n)) },
+      {
+        nodes: nextNodes,
+        groups: patch.groupId !== undefined ? pruneEmptyGroups(nextNodes, graphStore.state.groups) : undefined,
+      },
       `node:${id}:edit`,
     );
   }
 
   function updateSelectedNodes(patch: Partial<GraphNode>, label: string) {
     const ids = new Set(selectedIds);
+    const nextNodes = graphStore.state.nodes.map((n) => (ids.has(n.id) ? { ...n, ...patch } : n));
     commitGraph(
       label,
-      { nodes: graphStore.state.nodes.map((n) => (ids.has(n.id) ? { ...n, ...patch } : n)) },
+      {
+        nodes: nextNodes,
+        groups: patch.groupId !== undefined ? pruneEmptyGroups(nextNodes, graphStore.state.groups) : undefined,
+      },
       `selection:${Object.keys(patch).sort().join(",")}`,
     );
   }
@@ -440,7 +462,7 @@ export default function App() {
     const next = deleteNode(current, currentLinks, id, branch);
     commitGraph(
       branch ? `Deleted branch of ${target?.title || "node"}` : `Deleted ${target?.title || "node"}`,
-      { nodes: next.nodes, links: next.links },
+      { nodes: next.nodes, links: next.links, groups: pruneEmptyGroups(next.nodes, graphStore.state.groups) },
     );
     setMenu(null);
   }
@@ -452,10 +474,34 @@ export default function App() {
       nextNodes = next.nodes;
       nextLinks = next.links;
     }
-    commitGraph(`Deleted ${ids.length} nodes`, { nodes: nextNodes, links: nextLinks });
+    commitGraph(`Deleted ${ids.length} nodes`, {
+      nodes: nextNodes,
+      links: nextLinks,
+      groups: pruneEmptyGroups(nextNodes, graphStore.state.groups),
+    });
     setSelectedIds([]);
     setPicked(null);
     setMenu(null);
+  }
+
+  function createGroup(ids: string[], title: string) {
+    const id = newId();
+    const set = new Set(ids);
+    const nextNodes = graphStore.state.nodes.map((n) => (set.has(n.id) ? { ...n, groupId: id } : n));
+    const nextGroups: GraphGroup[] = [...graphStore.state.groups, { id, title: groupTitle(title) }];
+    commitGraph(`Grouped ${ids.length} nodes`, {
+      nodes: nextNodes,
+      groups: pruneEmptyGroups(nextNodes, nextGroups),
+    });
+  }
+
+  function ungroup(ids: string[]) {
+    const set = new Set(ids);
+    const nextNodes = graphStore.state.nodes.map((n) => (set.has(n.id) ? { ...n, groupId: null } : n));
+    commitGraph(`Ungrouped ${ids.length} nodes`, {
+      nodes: nextNodes,
+      groups: pruneEmptyGroups(nextNodes, graphStore.state.groups),
+    });
   }
 
   function removeLink(id: string) {
@@ -596,7 +642,7 @@ export default function App() {
       | undefined;
     if (!fg || !size.w || !size.h) return;
 
-    const filterOptions = { statusFilters, employeeEmail: employeeFilter };
+    const filterOptions = { statusFilters, employeeEmail: employeeFilter, groupIds: groupFilters };
     const toFit = nodes.filter((n) => {
       if (typeof n.x !== "number" || typeof n.y !== "number") return false;
       if (hideFiltered && !isFiltered(n, search, settings.colorBy, filterOptions)) return false;
@@ -629,7 +675,7 @@ export default function App() {
 
     fg.centerAt?.(cx, cy, 400);
     window.setTimeout(() => fg.zoom?.(zoomK, 400), 0);
-  }, [nodes, size.w, size.h, hideFiltered, search, settings.colorBy, statusFilters, employeeFilter]);
+  }, [nodes, size.w, size.h, hideFiltered, search, settings.colorBy, statusFilters, employeeFilter, groupFilters]);
 
   useEffect(() => {
     if (!nodes.length || size.w < 200) return;
@@ -745,7 +791,7 @@ export default function App() {
         theme={theme}
         onTheme={(next) => patchUi({ theme: next })}
         onExport={() => {
-          downloadJson({ nodes, links, settings });
+          downloadJson({ nodes, links, groups, settings });
           showToast("Exported JSON");
         }}
         onImport={() => importRef.current?.click()}
@@ -759,11 +805,13 @@ export default function App() {
 
       <div className="flex min-h-0 min-w-0 flex-1">
         <div className="flex h-full shrink-0">
-          <aside className="site-left-rail flex h-full w-[280px] shrink-0 flex-col border-r border-[var(--line)] bg-[var(--card)] px-2 py-2">
+          <aside className="site-left-rail flex h-full w-[280px] shrink-0 flex-col border-r border-[var(--line)] bg-[var(--card)]">
             <LeftSidePanel
               search={search}
               statusFilters={statusFilters}
               employeeFilter={employeeFilter}
+              groups={groups}
+              groupFilters={groupFilters}
               nodes={nodes}
               settings={settings}
               colorBy={settings.colorBy}
@@ -771,6 +819,7 @@ export default function App() {
               onSearch={setSearch}
               onStatusFilters={setStatusFilters}
               onEmployeeFilter={setEmployeeFilter}
+              onGroupFilters={setGroupFilters}
               onSettings={patchSettings}
               onResetSettings={() => setSettings(DEFAULT_SETTINGS)}
               onFit={fitGraph}
@@ -783,6 +832,9 @@ export default function App() {
               onToggleCards={() => setSettings(mergeViewSettings(settings, { cardInfo: !settings.cardInfo }))}
               onNodeSave={(patch) => {
                 if (editing) updateNode(editing.id, patch);
+              }}
+              onCreateGroup={(title) => {
+                if (editing) createGroup([editing.id], title);
               }}
             />
           </aside>
@@ -811,6 +863,7 @@ export default function App() {
           <GraphCanvas
             nodes={graphNodes}
             links={links}
+            groups={groups}
             settings={settings}
             selectedIds={selectedIds}
             selectedLinkId={picked?.kind === "link" ? picked.id : null}
@@ -824,6 +877,7 @@ export default function App() {
             search={search}
             statusFilters={statusFilters}
             employeeFilter={employeeFilter}
+            groupFilters={groupFilters}
             hideFiltered={hideFiltered}
             theme={theme}
             rotation={degToRad(viewRotation)}
@@ -914,7 +968,12 @@ export default function App() {
                 if (prev && Math.abs(prev.x - n.x) < POSITION_EPSILON && Math.abs(prev.y - n.y) < POSITION_EPSILON) return [];
                 return [{ id: n.id, x: n.x, y: n.y }];
               });
-              saveDocument({ nodes: graphStore.state.nodes, links: graphStore.state.links, settings });
+              saveDocument({
+                nodes: graphStore.state.nodes,
+                links: graphStore.state.links,
+                groups: graphStore.state.groups,
+                settings,
+              });
               if (moved.length && graphStore.state.hydrated) savePositions(moved, "Updated positions");
               if (!fittedOnce.current) {
                 fittedOnce.current = true;
@@ -943,7 +1002,10 @@ export default function App() {
 
       {selectedIds.length > 1 && !menu && !editingLink && !connect && !placing && (
         <SelectionPanel
+          key={selectedIds.join("|")}
           nodes={nodes.filter((n) => selectedIds.includes(n.id))}
+          allNodes={nodes}
+          groups={groups}
           colorBy={settings.colorBy}
           style={actionPos}
           onStatus={(_status, color) =>
@@ -956,6 +1018,15 @@ export default function App() {
             )
           }
           onDelete={() => removeNodes(selectedIds)}
+          onAssignGroup={(groupId) => {
+            if (!groupId) {
+              ungroup(selectedIds);
+              return;
+            }
+            const groupName = groupTitle(graphStore.state.groups.find((g) => g.id === groupId)?.title);
+            updateSelectedNodes({ groupId }, `Moved ${selectedIds.length} nodes into ${groupName}`);
+          }}
+          onCreateGroup={(title) => createGroup(selectedIds, title)}
         />
       )}
 
@@ -1048,7 +1119,18 @@ export default function App() {
         />
       )}
 
-      <SyncChangesFeed onJumpNode={focusNode} onJumpLink={focusLink} />
+      <SyncChangesFeed
+        onJumpNode={focusNode}
+        onJumpLink={focusLink}
+        onJumpGroup={(id) => {
+          const member = graphStore.state.nodes.find((n) => n.groupId === id);
+          if (!member) {
+            showToast("That group has no nodes on the map");
+            return;
+          }
+          focusNode(member.id);
+        }}
+      />
 
       <HistoryPanel
         open={historyOpen}

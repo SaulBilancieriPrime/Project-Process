@@ -8,7 +8,8 @@ import {
 } from "../graph/workflowStatus";
 import { users } from "../data/users";
 import { cx, field, sideH2, toolBtn, toolBtnOn } from "../styles";
-import type { ColorBy, GraphNode, GraphSettings } from "../types";
+import type { ColorBy, GraphGroup, GraphNode, GraphSettings } from "../types";
+import GroupFilterPicker from "./GroupFilterPicker";
 import PersonFace from "./PersonFace";
 
 type Props = {
@@ -18,9 +19,12 @@ type Props = {
   search: string;
   statusFilters: WorkflowStatus[];
   employeeFilter: string | null;
+  groups: GraphGroup[];
+  groupFilters: string[];
   onSearch: (v: string) => void;
   onStatusFilters: (v: WorkflowStatus[]) => void;
   onEmployeeFilter: (v: string | null) => void;
+  onGroupFilters: (v: string[]) => void;
   onSettings: (patch: Partial<GraphSettings>) => void;
   onFit: () => void;
   onReorg: () => void;
@@ -71,9 +75,12 @@ export default function FilterPanel({
   search,
   statusFilters,
   employeeFilter,
+  groups,
+  groupFilters,
   onSearch,
   onStatusFilters,
   onEmployeeFilter,
+  onGroupFilters,
   onSettings,
   onFit,
   onReorg,
@@ -163,6 +170,18 @@ export default function FilterPanel({
             );
           })}
         </div>
+        {groups.length ? (
+          <div className="mt-2">
+            <p className="mb-1 text-[10px] font-semibold tracking-wide text-[var(--muted)] uppercase">Groups</p>
+            <GroupFilterPicker
+              groups={groups}
+              nodes={nodes}
+              colorBy={colorBy}
+              selected={groupFilters}
+              onChange={onGroupFilters}
+            />
+          </div>
+        ) : null}
       </section>
 
       <section className="border-t border-[var(--line)] pt-2 pb-0.5">
@@ -226,6 +245,14 @@ export default function FilterPanel({
           />
         ) : null}
         <SliderRow
+          label="Node"
+          min={1}
+          max={4}
+          step={0.05}
+          value={settings.enlarge ?? 1}
+          onChange={(enlarge) => onSettings({ enlarge })}
+        />
+        <SliderRow
           label="Text"
           min={0.7}
           max={1.8}
@@ -275,24 +302,24 @@ export default function FilterPanel({
             </label>
             <SliderRow
               label="Spread"
-              min={-420}
-              max={-40}
+              min={40}
+              max={420}
               step={10}
-              value={settings.charge}
-              onChange={(charge) => onSettings({ charge })}
+              value={-settings.charge}
+              onChange={(spread) => onSettings({ charge: -spread })}
             />
             <SliderRow
               label="Spacing"
-              min={24}
-              max={300}
+              min={20}
+              max={200}
               step={4}
               value={settings.linkDistance}
               onChange={(linkDistance) => onSettings({ linkDistance })}
             />
             <SliderRow
               label="Padding"
-              min={2}
-              max={28}
+              min={0}
+              max={30}
               step={1}
               value={settings.collide}
               onChange={(collide) => onSettings({ collide })}

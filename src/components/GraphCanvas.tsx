@@ -4,6 +4,21 @@ import ForceGraph2D, { type ForceGraphMethods } from "react-force-graph-2d";
 import { users } from "../data/users";
 import { personStyle } from "../data/personStyle";
 import { NODE_FILL, graphTheme, nodeColor, sizeForLevel, withAlpha } from "../graph/colors";
+import { groupStatusColor } from "../graph/groups";
+import {
+  GROUP_LINK_CAPSULE,
+  GROUP_MEMBRANE_PAD,
+  GROUP_MEMBRANE_SCREEN_PAD,
+  cellHulls,
+  groupFieldBlend,
+  forceGroupExclusion,
+  hullApex,
+  pointInCell,
+  traceCellPath,
+  type Capsule,
+  type Disk,
+  type GroupFieldBody,
+} from "../graph/groupHull";
 import { employeeInitials } from "../graph/employee";
 import { findOriginId, hopDistances, hopGlow, pulseAmountOnLink, pulseFront, pulseHalo, pulseStroke } from "../graph/pulse";
 import { findSelfIntersection, lassoRegion, pointInPolygon, type Point } from "../graph/lasso";
@@ -11,7 +26,7 @@ import { rotatePoint, viewCoverOffset } from "../graph/viewRotation";
 import { isFiltered, linkEnds } from "../graph/visibility";
 import { STATUS_COLORS, type WorkflowStatus } from "../graph/workflowStatus";
 import { loadPersonPhoto } from "../lib/personPhoto";
-import type { ArrowStyle, GraphLink, GraphNode, GraphSettings } from "../types";
+import type { ArrowStyle, GraphGroup, GraphLink, GraphNode, GraphSettings } from "../types";
 
 export type GraphHandle = ForceGraphMethods<GraphNode, GraphLink>;
 
@@ -21,6 +36,7 @@ export type LassoMode = "replace" | "add" | "subtract";
 type Props = {
   nodes: GraphNode[];
   links: GraphLink[];
+  groups: GraphGroup[];
   settings: GraphSettings;
   selectedIds: string[];
   selectedLinkId: string | null;
@@ -34,6 +50,7 @@ type Props = {
   search: string;
   statusFilters: WorkflowStatus[];
   employeeFilter: string | null;
+  groupFilters: string[];
   hideFiltered: boolean;
   theme: "light" | "dark";
   rotation?: number;
@@ -106,6 +123,68 @@ function cardsAtZoom(cardInfo: boolean, globalScale: number) {
 
 function viewScale(value: number | undefined, fallback = 1) {
   return Number.isFinite(value) ? (value as number) : fallback;
+}
+
+function groupLinkCapsules(
+  members: Array<{ id: string; x?: number; y?: number }>,
+  links: GraphLink[],
+  disks: Disk[],
+): Capsule[] {
+  const byId = new Map(members.map((n) => [n.id, n]));
+  const diskById = new Map(members.map((n, i) => [n.id, disks[i]]));
+  const capsules: Capsule[] = [];
+  for (const link of links) {
+    const ends = linkEnds(link);
+    const a = byId.get(ends.source);
+    const b = byId.get(ends.target);
+    if (!a || !b || a.x == null || a.y == null || b.x == null || b.y == null) continue;
+    const ra = diskById.get(a.id)?.r ?? GROUP_MEMBRANE_PAD;
+    const rb = diskById.get(b.id)?.r ?? GROUP_MEMBRANE_PAD;
+    capsules.push({
+      a: { x: a.x, y: a.y },
+      b: { x: b.x, y: b.y },
+      r: Math.min(ra, rb) * GROUP_LINK_CAPSULE,
+    });
+  }
+  return capsules;
+}
+
+function groupFieldBodies(
+  live: Array<{ id: string; groupId?: string | null; x?: number; y?: number; size?: number }>,
+  links: GraphLink[],
+  groups: GraphGroup[],
+  pad: number,
+): GroupFieldBody[] {
+  const membersByGroup = new Map<string, typeof live>();
+  for (const node of live) {
+    if (!node.groupId || node.x == null || node.y == null) continue;
+    const list = membersByGroup.get(node.groupId);
+    if (list) list.push(node);
+    else membersByGroup.set(node.groupId, [node]);
+  }
+  const bodies: GroupFieldBody[] = [];
+  for (const group of groups) {
+    const members = membersByGroup.get(group.id);
+    if (!members?.length) continue;
+    const disks: Disk[] = members.map((n) => ({
+      x: n.x as number,
+      y: n.y as number,
+      r: pad + (n.size ?? 1) * 8,
+    }));
+    const capsules = groupLinkCapsules(members, links, disks);
+    const blend = groupFieldBlend(disks);
+    const cx = disks.reduce((sum, d) => sum + d.x, 0) / disks.length;
+    const cy = disks.reduce((sum, d) => sum + d.y, 0) / disks.length;
+    bodies.push({
+      memberIds: new Set(members.map((n) => n.id)),
+      disks,
+      capsules,
+      blend,
+      cx,
+      cy,
+    });
+  }
+  return bodies;
 }
 
 function assigneeEmail(node: GraphNode) {
@@ -279,6 +358,7 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number,
 export default function GraphCanvas({
   nodes,
   links,
+  groups = [],
   settings,
   selectedIds,
   selectedLinkId,
@@ -292,6 +372,7 @@ export default function GraphCanvas({
   search,
   statusFilters,
   employeeFilter,
+  groupFilters = [],
   hideFiltered,
   theme,
   rotation = 0,
@@ -342,8 +423,8 @@ export default function GraphCanvas({
   const palette = graphTheme(theme);
 
   const filterOptions = useMemo(
-    () => ({ statusFilters, employeeEmail: employeeFilter }),
-    [statusFilters, employeeFilter],
+    () => ({ statusFilters, employeeEmail: employeeFilter, groupIds: groupFilters }),
+    [statusFilters, employeeFilter, groupFilters],
   );
 
   const graphData = useMemo(() => {
@@ -449,8 +530,17 @@ export default function GraphCanvas({
       "collide",
       forceCollide((d: GraphNode) => settings.collide + d.size * 8 + Math.max(0, 4 - d.level)).strength(0.92).iterations(3) as never,
     );
+    fg.d3Force(
+      "groupField",
+      settings.physics
+        ? (forceGroupExclusion(
+            (live) => groupFieldBodies(live, links, groups, GROUP_MEMBRANE_PAD),
+            (node) => settings.collide + (node.size ?? 1) * 8,
+          ) as never)
+        : null,
+    );
     if (settings.physics) fg.d3ReheatSimulation();
-  }, [graphRef, settings, nodes]);
+  }, [graphRef, settings, nodes, links, groups]);
 
   function canvasAtClient(clientX: number, clientY: number) {
     const rect = hostRef.current?.getBoundingClientRect();
@@ -705,6 +795,80 @@ export default function GraphCanvas({
     if (!count) return null;
     const p = pad / zoomK();
     return { x: minX - p, y: minY - p, w: maxX - minX + p * 2, h: maxY - minY + p * 2 };
+  }
+
+  function paintNamedGroups(ctx: CanvasRenderingContext2D, globalScale: number) {
+    if (!groups.length) return;
+    const enlarge = viewScale(settings.enlarge);
+    const k = Math.max(globalScale, 1e-4);
+    const pad = GROUP_MEMBRANE_PAD * 0.35 + GROUP_MEMBRANE_SCREEN_PAD / k;
+    const live = liveEngineNodes();
+    const membersByGroup = new Map<string, GraphNode[]>();
+    for (const node of live) {
+      if (!node.groupId || node.x == null || node.y == null) continue;
+      const list = membersByGroup.get(node.groupId);
+      if (list) list.push(node);
+      else membersByGroup.set(node.groupId, [node]);
+    }
+    const pointer = cursorGraph.current;
+    const painted = groups.flatMap((group) => {
+      const members = membersByGroup.get(group.id);
+      if (!members?.length) return [];
+      const disks = members.map((n) => ({
+        x: n.x as number,
+        y: n.y as number,
+        r: dotRadius(n, globalScale, enlarge) + pad,
+      }));
+      return [{
+        group,
+        members,
+        disks,
+        capsules: groupLinkCapsules(members, links, disks),
+        blend: groupFieldBlend(disks),
+      }];
+    });
+    for (const spec of painted) {
+      const others = painted.filter((item) => item !== spec);
+      const hulls = cellHulls(spec.disks, spec.capsules, spec.blend, others).filter((hull) => hull.length >= 3);
+      if (!hulls.length) continue;
+      const { group, members, disks } = spec;
+      const color = groupStatusColor(members, settings.colorBy);
+      const hovered =
+        members.some((n) => n.id === hoveredId) ||
+        Boolean(pointer && hulls.some((hull) => pointInCell(pointer.x, pointer.y, hull)));
+      ctx.save();
+      ctx.fillStyle = withAlpha(color, theme === "dark" ? 0.16 : 0.12);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2.1 / k;
+      ctx.lineJoin = "round";
+      for (const hull of hulls) {
+        traceCellPath(ctx, hull);
+        ctx.fill();
+        ctx.stroke();
+      }
+      if (hovered) {
+        const apex = hulls.reduce<ReturnType<typeof hullApex>>((best, hull) => {
+          const tip = hullApex(hull);
+          if (!tip) return best;
+          if (!best || tip.y < best.y) return tip;
+          return best;
+        }, null);
+        const title = group.title.trim() || "Untitled group";
+        inScreenSpace(ctx, apex?.x ?? disks[0].x, apex?.y ?? disks[0].y, globalScale, () => {
+          ctx.font = "700 11px \"Segoe UI\", sans-serif";
+          const w = ctx.measureText(title).width + 14;
+          ctx.fillStyle = withAlpha(color, 0.95);
+          ctx.beginPath();
+          ctx.roundRect(-w / 2, -22, w, 18, 9);
+          ctx.fill();
+          ctx.fillStyle = "#0f172a";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(title, 0, -13);
+        }, labelUnrotate());
+      }
+      ctx.restore();
+    }
   }
 
   function moveSelected(dx: number, dy: number) {
@@ -1359,6 +1523,7 @@ export default function GraphCanvas({
         ctx.restore();
       }}
       onRenderFramePost={(ctx, globalScale) => {
+        paintNamedGroups(ctx, globalScale);
         const box = interaction.current;
         if (box?.type === "marquee" && box.points.length >= 1) {
           const pts = box.points;

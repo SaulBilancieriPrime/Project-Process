@@ -17,6 +17,7 @@ export const graphNodeSchema = z.object({
   color: z.string().optional(),
   employee: z.string().default(""),
   employeeEmail: z.string().default(""),
+  groupId: z.union([z.string(), z.null()]).optional().default(null),
   size: z.coerce.number().default(1).transform((value) => Math.min(6.5, Math.max(0.5, value))),
   x: optionalNumber,
   y: optionalNumber,
@@ -24,6 +25,11 @@ export const graphNodeSchema = z.object({
   vy: optionalNumber,
   fx: optionalNumber,
   fy: optionalNumber,
+});
+
+export const graphGroupSchema = z.object({
+  id: z.string().min(1).default(() => crypto.randomUUID()),
+  title: z.string().default("Untitled group"),
 });
 
 const linkEndSchema = z
@@ -72,15 +78,15 @@ export const graphSettingsSchema = z
   .transform((raw) => ({
     physics: raw.physics,
     charge: Math.min(-40, Math.max(-420, raw.charge)),
-    linkDistance: Math.min(300, Math.max(64, raw.linkDistance)),
-    collide: Math.min(28, Math.max(10, raw.collide)),
+    linkDistance: Math.min(200, Math.max(20, raw.linkDistance)),
+    collide: Math.min(30, Math.max(0, raw.collide)),
     radial: raw.radial,
     colorBy: raw.colorBy,
     cardInfo: typeof raw.cardInfo === "boolean" ? raw.cardInfo : raw.nodeView === "cards",
     showText: raw.showText !== false,
     pulse: raw.pulse === true,
     pulseSpeed: Math.min(2.2, Math.max(0.25, raw.pulseSpeed ?? 0.7)),
-    enlarge: Math.min(1.8, Math.max(0.7, raw.enlarge)),
+    enlarge: Math.min(4, Math.max(1, raw.enlarge)),
     textScale: Math.min(1.8, Math.max(0.7, raw.textScale ?? raw.enlarge)),
     cardScale: Math.min(1.8, Math.max(0.7, raw.cardScale ?? raw.enlarge)),
   }));
@@ -88,12 +94,14 @@ export const graphSettingsSchema = z
 export const graphDocumentInputSchema = z.object({
   nodes: z.array(z.unknown()).default([]),
   links: z.array(z.unknown()).default([]),
+  groups: z.array(z.unknown()).optional(),
   settings: z.unknown().optional(),
 });
 
 export const graphDocumentSchema = z.object({
   nodes: z.array(graphNodeSchema),
   links: z.array(graphLinkSchema),
+  groups: z.array(graphGroupSchema).default([]),
   settings: graphSettingsSchema,
 });
 
@@ -103,6 +111,7 @@ export type ArrowStyle = z.infer<typeof arrowStyleSchema>;
 export type LinkKind = z.infer<typeof linkKindSchema>;
 export type GraphNode = z.infer<typeof graphNodeSchema>;
 export type GraphLink = z.infer<typeof graphLinkSchema>;
+export type GraphGroup = z.infer<typeof graphGroupSchema>;
 export type GraphSettings = z.infer<typeof graphSettingsSchema>;
 export type GraphDocument = z.infer<typeof graphDocumentSchema>;
 
@@ -117,6 +126,10 @@ export function parseGraphDocument(data: unknown): GraphDocument {
     }),
     links: raw.links.flatMap((link) => {
       const parsed = graphLinkSchema.safeParse(link);
+      return parsed.success ? [parsed.data] : [];
+    }),
+    groups: (raw.groups ?? []).flatMap((group) => {
+      const parsed = graphGroupSchema.safeParse(group);
       return parsed.success ? [parsed.data] : [];
     }),
     settings: graphSettingsSchema.parse(raw.settings ?? {}),

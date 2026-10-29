@@ -56,11 +56,13 @@ function remapWithPrefix(doc: GraphDocument, prefix: string): GraphDocument {
   const remapId = (id: string | null | undefined) => (id ? `${prefix}${id}` : null);
   return {
     settings: doc.settings,
+    groups: doc.groups.map((group) => ({ ...group, id: `${prefix}${group.id}` })),
     nodes: doc.nodes.map((node) =>
       graphNodeSchema.parse({
         ...node,
         id: remapId(node.id)!,
         parentId: remapId(node.parentId),
+        groupId: remapId(node.groupId),
       }),
     ),
     links: doc.links.flatMap((link) => {

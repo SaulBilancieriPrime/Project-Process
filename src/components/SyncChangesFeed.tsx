@@ -15,6 +15,7 @@ import { chip, chipOn, cx, ghostBtn, historyKind, primaryBtn, toolBtn } from "..
 type Props = {
   onJumpNode: (id: string) => void;
   onJumpLink: (id: string) => void;
+  onJumpGroup: (id: string) => void;
 };
 
 type Filter = "all" | "add" | "update" | "remove" | "alerts";
@@ -65,7 +66,7 @@ function ChangeCard({ item, onJump }: { item: SyncFeedItem; onJump?: () => void 
             type="button"
             className={cx(ghostBtn, "shrink-0 px-1.5 py-0.5 text-[10px]")}
             onClick={onJump}
-            aria-label={`Show ${item.target === "link" ? "connection" : "node"} on the map`}
+            aria-label={`Show ${item.target === "link" ? "connection" : item.target === "group" ? "group" : "node"} on the map`}
           >
             Show
           </button>
@@ -121,7 +122,7 @@ function QueueStatus({ entries }: { entries: OutboxEntry[] }) {
   );
 }
 
-export default function SyncChangesFeed({ onJumpNode, onJumpLink }: Props) {
+export default function SyncChangesFeed({ onJumpNode, onJumpLink, onJumpGroup }: Props) {
   const items = useStore(syncFeedStore, (s) => s.items);
   const unread = useStore(syncFeedStore, unreadCount);
   const expanded = useStore(syncFeedStore, (s) => s.open);
@@ -147,6 +148,7 @@ export default function SyncChangesFeed({ onJumpNode, onJumpLink }: Props) {
     return () => {
       markSyncItemRead(item.id);
       if (item.target === "link") onJumpLink(id);
+      else if (item.target === "group") onJumpGroup(id);
       else onJumpNode(id);
     };
   };

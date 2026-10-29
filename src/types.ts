@@ -3,6 +3,7 @@ export {
   type ArrowStyle,
   type ColorBy,
   type GraphDocument,
+  type GraphGroup,
   type GraphLink,
   type GraphNode,
   type GraphSettings,

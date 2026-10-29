@@ -1,3 +1,4 @@
+import { UNGROUPED_FILTER } from "./groups";
 import { nodeWorkflowStatus, type WorkflowStatus } from "./workflowStatus";
 import type { ColorBy, GraphLink, GraphNode } from "../types";
 
@@ -40,6 +41,7 @@ export function isFiltered(
   options?: {
     statusFilters?: WorkflowStatus[];
     employeeEmail?: string | null;
+    groupIds?: string[];
   },
 ) {
   if (!matchesQuery(node, query)) return false;
@@ -52,6 +54,13 @@ export function isFiltered(
     if (node.employeeEmail.trim()) return false;
   } else if (employeeEmail) {
     if (node.employeeEmail.trim().toLowerCase() !== employeeEmail.trim().toLowerCase()) return false;
+  }
+  const groupIds = options?.groupIds ?? [];
+  if (groupIds.length) {
+    const named = groupIds.filter((id) => id !== UNGROUPED_FILTER);
+    const inNamed = Boolean(node.groupId && named.includes(node.groupId));
+    const inUngrouped = groupIds.includes(UNGROUPED_FILTER) && !node.groupId;
+    if (!inNamed && !inUngrouped) return false;
   }
   return true;
 }

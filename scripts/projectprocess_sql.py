@@ -144,6 +144,7 @@ CREATE TABLE {SCHEMA}.Node (
     size float NOT NULL CONSTRAINT DF_projectprocess_Node_size DEFAULT (1),
     x float NULL,
     y float NULL,
+    group_id nvarchar(160) NULL,
     version int NOT NULL CONSTRAINT DF_projectprocess_Node_ver DEFAULT (1),
     is_deleted bit NOT NULL CONSTRAINT DF_projectprocess_Node_del DEFAULT (0),
     updated_rev bigint NOT NULL CONSTRAINT DF_projectprocess_Node_rev DEFAULT (0),
@@ -178,17 +179,32 @@ CREATE TABLE {SCHEMA}.ChangeLog (
     target_id nvarchar(160) NULL,
     payload_json nvarchar(max) NULL
 );""",
+    f"""
+IF OBJECT_ID(N'{SCHEMA}.Group', N'U') IS NULL
+CREATE TABLE {SCHEMA}.[Group] (
+    id nvarchar(160) NOT NULL CONSTRAINT PK_projectprocess_Group PRIMARY KEY,
+    title nvarchar(400) NOT NULL,
+    version int NOT NULL CONSTRAINT DF_projectprocess_Group_ver DEFAULT (1),
+    is_deleted bit NOT NULL CONSTRAINT DF_projectprocess_Group_del DEFAULT (0),
+    updated_rev bigint NOT NULL CONSTRAINT DF_projectprocess_Group_rev DEFAULT (0),
+    updated_client nvarchar(64) NULL,
+    updated_at datetime2 NOT NULL,
+    updated_by nvarchar(200) NULL
+);""",
     # Upgrades for databases created by earlier versions of the app.
     _add_column("Node", "updated_rev", "bigint NOT NULL CONSTRAINT DF_projectprocess_Node_rev DEFAULT (0)"),
     _add_column("Node", "updated_client", "nvarchar(64) NULL"),
     _add_column("Link", "version", "int NOT NULL CONSTRAINT DF_projectprocess_Link_ver DEFAULT (1)"),
     _add_column("Link", "updated_rev", "bigint NOT NULL CONSTRAINT DF_projectprocess_Link_rev DEFAULT (0)"),
     _add_column("Link", "updated_client", "nvarchar(64) NULL"),
+    _add_column("Node", "group_id", "nvarchar(160) NULL"),
     _index("IX_projectprocess_Link_ends", "Link", "source_id, target_id"),
     _index("IX_projectprocess_Node_rev", "Node", "updated_rev"),
     _index("IX_projectprocess_Link_rev", "Link", "updated_rev"),
     _index("IX_projectprocess_ChangeLog_rev", "ChangeLog", "revision"),
     _index("IX_projectprocess_ChangeLog_at", "ChangeLog", "changed_at"),
+    _index("IX_projectprocess_Node_group", "Node", "group_id"),
+    _index("IX_projectprocess_Group_rev", "[Group]", "updated_rev"),
 ]
 
 LEGACY_DROPS = [

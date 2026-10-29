@@ -1,13 +1,15 @@
 import {
+  graphGroupSchema,
   graphLinkSchema,
   graphNodeSchema,
   type GraphDocument,
+  type GraphGroup,
   type GraphLink,
   type GraphNode,
 } from "../schema/graph";
 
 export type VersionMap = Record<string, number>;
-export type EntityVersions = { nodes: VersionMap; links: VersionMap };
+export type EntityVersions = { nodes: VersionMap; links: VersionMap; groups: VersionMap };
 export type NodePosition = { id: string; x: number; y: number };
 
 export type MapTx = {
@@ -16,6 +18,8 @@ export type MapTx = {
   deleteNodeIds?: string[];
   upsertLinks?: GraphLink[];
   deleteLinkIds?: string[];
+  upsertGroups?: GraphGroup[];
+  deleteGroupIds?: string[];
   positions?: NodePosition[];
   baseVersions?: EntityVersions;
   replace?: GraphDocument;
@@ -31,6 +35,7 @@ export type FullMap = {
   you: string | null;
   nodes: GraphNode[];
   links: GraphLink[];
+  groups: GraphGroup[];
   versions: EntityVersions;
 };
 
@@ -40,6 +45,7 @@ export type MapDelta = {
   you: string | null;
   nodes: RemoteRow<GraphNode>[];
   links: RemoteRow<GraphLink>[];
+  groups: RemoteRow<GraphGroup>[];
   log: ChangeLogEntry[];
 };
 
@@ -47,7 +53,7 @@ export type MapFetch = FullMap | MapDelta;
 
 export type TxResult =
   | { ok: true; revision: number; versions: EntityVersions }
-  | { ok: false; kind: "conflict"; error: string; nodeIds: string[]; linkIds: string[] }
+  | { ok: false; kind: "conflict"; error: string; nodeIds: string[]; linkIds: string[]; groupIds: string[] }
   | { ok: false; kind: "rejected"; error: string; status: number }
   | { ok: false; kind: "retryable"; error: string; status: number };
 
@@ -86,6 +92,11 @@ function parseLink(raw: RawRow) {
   return parsed.success ? parsed.data : null;
 }
 
+function parseGroup(raw: RawRow) {
+  const parsed = graphGroupSchema.safeParse(raw);
+  return parsed.success ? parsed.data : null;
+}
+
 function rows(value: unknown): RawRow[] {
   return Array.isArray(value) ? (value as RawRow[]) : [];
 }
@@ -100,7 +111,7 @@ export async function fetchMap(since?: number): Promise<MapFetch> {
   const revision = Number(body.revision) || 0;
   const you = typeof body.you === "string" ? body.you : null;
   if (body.full) {
-    const versions: EntityVersions = { nodes: {}, links: {} };
+    const versions: EntityVersions = { nodes: {}, links: {}, groups: {} };
     const nodes = rows(body.nodes).flatMap((raw) => {
       const node = parseNode(raw);
       if (!node) return [];
@@ -113,7 +124,13 @@ export async function fetchMap(since?: number): Promise<MapFetch> {
       versions.links[link.id] = Number(raw.version) || 1;
       return [link];
     });
-    return { kind: "full", revision, you, nodes, links, versions };
+    const groups = rows(body.groups).flatMap((raw) => {
+      const group = parseGroup(raw);
+      if (!group) return [];
+      versions.groups[group.id] = Number(raw.version) || 1;
+      return [group];
+    });
+    return { kind: "full", revision, you, nodes, links, groups, versions };
   }
   const remote = <T>(raw: RawRow, item: T | null): RemoteRow<T>[] =>
     item
@@ -132,6 +149,7 @@ export async function fetchMap(since?: number): Promise<MapFetch> {
     you,
     nodes: rows(body.nodes).flatMap((raw) => remote(raw, parseNode(raw))),
     links: rows(body.links).flatMap((raw) => remote(raw, parseLink(raw))),
+    groups: rows(body.groups).flatMap((raw) => remote(raw, parseGroup(raw))),
     log: rows(body.log).map((raw) => ({
       revision: Number(raw.revision) || 0,
       by: String(raw.by ?? ""),
@@ -153,7 +171,9 @@ export async function postMapTx(tx: MapTx): Promise<TxResult> {
         ...rest,
         actor: mapActor(),
         clientId: mapClientId(),
-        replace: replace ? { nodes: replace.nodes, links: replace.links, settings: {} } : undefined,
+        replace: replace
+          ? { nodes: replace.nodes, links: replace.links, groups: replace.groups ?? [], settings: {} }
+          : undefined,
       }),
     });
   } catch (err) {
@@ -162,7 +182,7 @@ export async function postMapTx(tx: MapTx): Promise<TxResult> {
   const body = (await res.json().catch(() => null)) as RawRow | null;
   const error = typeof body?.error === "string" ? body.error : `Map write failed (${res.status})`;
   if (res.ok && body?.ok) {
-    const versions = (body.versions as EntityVersions | undefined) ?? { nodes: {}, links: {} };
+    const versions = (body.versions as EntityVersions | undefined) ?? { nodes: {}, links: {}, groups: {} };
     return { ok: true, revision: Number(body.revision) || 0, versions };
   }
   if (res.status === 409 && body?.conflict) {
@@ -172,6 +192,7 @@ export async function postMapTx(tx: MapTx): Promise<TxResult> {
       error,
       nodeIds: Array.isArray(body.nodeIds) ? body.nodeIds.map(String) : [],
       linkIds: Array.isArray(body.linkIds) ? body.linkIds.map(String) : [],
+      groupIds: Array.isArray(body.groupIds) ? body.groupIds.map(String) : [],
     };
   }
   if (res.status === 400 || res.status === 413) return { ok: false, kind: "rejected", status: res.status, error };

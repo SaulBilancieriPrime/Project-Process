@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
-import { graphDocumentSchema, graphLinkSchema, graphNodeSchema } from "../../schema/graph";
+import { graphDocumentSchema, graphGroupSchema, graphLinkSchema, graphNodeSchema } from "../../schema/graph";
 import {
   createRateLimiter,
   PayloadTooLargeError,
@@ -25,11 +25,19 @@ const txSchema = z.object({
   deleteNodeIds: z.array(idSchema).max(MAX_ROWS).optional(),
   upsertLinks: z.array(graphLinkSchema).max(MAX_ROWS).optional(),
   deleteLinkIds: z.array(idSchema).max(MAX_ROWS).optional(),
+  upsertGroups: z.array(graphGroupSchema).max(MAX_ROWS).optional(),
+  deleteGroupIds: z.array(idSchema).max(MAX_ROWS).optional(),
   positions: z
     .array(z.object({ id: idSchema, x: z.number(), y: z.number() }))
     .max(MAX_ROWS)
     .optional(),
-  baseVersions: z.object({ nodes: versionMapSchema.optional(), links: versionMapSchema.optional() }).optional(),
+  baseVersions: z
+    .object({
+      nodes: versionMapSchema.optional(),
+      links: versionMapSchema.optional(),
+      groups: versionMapSchema.optional(),
+    })
+    .optional(),
   replace: graphDocumentSchema.optional(),
 });
 
@@ -71,6 +79,8 @@ export const Route = createFileRoute("/api/map")({
             !tx.deleteNodeIds?.length &&
             !tx.upsertLinks?.length &&
             !tx.deleteLinkIds?.length &&
+            !tx.upsertGroups?.length &&
+            !tx.deleteGroupIds?.length &&
             !tx.positions?.length;
           if (empty) return Response.json({ ok: false, error: "Empty transaction" }, { status: 400 });
           const result = await applyMapTx({ ...tx, actor });
@@ -90,6 +100,7 @@ export const Route = createFileRoute("/api/map")({
                 error: "Someone else changed this first",
                 nodeIds: err.nodeIds,
                 linkIds: err.linkIds,
+                groupIds: err.groupIds,
               },
               { status: 409 },
             );

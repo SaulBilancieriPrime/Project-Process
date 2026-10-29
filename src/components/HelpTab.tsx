@@ -206,19 +206,20 @@ export default function HelpTab() {
         <div className="grid grid-cols-2 gap-1.5">
           <Card icon={<IcoAdd />} title="Add a node" body={<>Hover or click <Key>+</Key>, or press <Key>N</Key>.</>} />
           <Card icon={<IcoLink />} title="Add a link" body="From + or a node menu, pick an arrow type, then single-click two nodes anywhere on the ball. The target ring highlights as you hover." />
-          <Card icon={<IcoEdit />} title="Edit a node" body="Click a ball — the left panel opens. Status, person, and size save instantly; Title and Description save with Enter / Ctrl+Enter or the check button." />
+          <Card icon={<IcoEdit />} title="Edit a node" body="Click a ball — the left panel opens. Status, person, group, and size save instantly; Title and Description save with Enter / Ctrl+Enter or the check button." />
           <Card icon={<IcoAdd />} title="Child nodes" body="Adding from a node's menu links the new node with a one-way arrow from the original." />
           <Card icon={<IcoLink />} title="Edit a link" body="Right-click a connection to flip, change arrows, insert, or delete." />
+          <Card icon={<IcoSelect />} title="Name a group" body="Lasso or Shift-click two or more nodes, then use the popup dropdown to assign an existing group, create a new one, or set None. Modify Node uses the same control for a single node. A tight membrane follows the members and the links between them, never overlaps another group, and keeps other nodes out. It turns green when every member is done, red when none are, and orange otherwise. The name appears on hover." />
         </div>
       </section>
 
       <section>
         <h3 className={cx(sideH2, "mb-1.5")}>Filter and look</h3>
         <div className="grid grid-cols-2 gap-1.5">
-          <Card icon={<IcoFilter />} title="Search & filter" body="Search titles, or tap status pills and people in the left rail." />
+          <Card icon={<IcoFilter />} title="Search & filter" body="Search titles, tap status pills or people in the left rail, or use the Groups dropdown to filter by one or more named groups (including Ungrouped)." />
           <Card icon={<IcoStatus />} title="Status" body="Incomplete, in progress, and done — shown as the ring on each ball." />
-          <Card icon={<IcoPeople />} title="Assign people" body="Pick a face in the 5-column grid on a node or multi-select panel. Click again to unassign. Hover for name and email." />
-          <Card icon={<IcoView />} title="View" body="Fit, Reorg, Physics, Text, Cards, and Pulse live under View; force sliders are under Advanced. These stay on this device — Reset view prefs restores defaults." />
+          <Card icon={<IcoPeople />} title="Assign people" body="Open the assignee dropdown on a node or multi-select panel. The closed row shows the current person; search to pick someone else or Unassigned." />
+          <Card icon={<IcoView />} title="View" body="Fit, Reorg, Physics, Text, Cards, and Pulse live under View. Node, Text, and Card sliders scale those pieces; force sliders are under Advanced. These stay on this device — Reset view prefs restores defaults." />
         </div>
       </section>
 

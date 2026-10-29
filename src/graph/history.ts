@@ -1,9 +1,9 @@
 import { KIND_LABEL } from "./ops";
 import { linkEnds } from "./visibility";
-import type { GraphLink, GraphNode } from "../types";
+import type { GraphGroup, GraphLink, GraphNode } from "../types";
 
 export type ChangeKind = "add" | "remove" | "update";
-export type ChangeTarget = "node" | "link";
+export type ChangeTarget = "node" | "link" | "group";
 
 export type ChangeItem = {
   id: string;
@@ -17,6 +17,7 @@ export type ChangeItem = {
 export type GraphSnapshot = {
   nodes: GraphNode[];
   links: GraphLink[];
+  groups: GraphGroup[];
 };
 
 export type EntityChange<T> = { id: string; before: T | null; after: T | null };
@@ -25,6 +26,7 @@ export type EntityChange<T> = { id: string; before: T | null; after: T | null };
 export type GraphPatch = {
   nodes: EntityChange<GraphNode>[];
   links: EntityChange<GraphLink>[];
+  groups: EntityChange<GraphGroup>[];
 };
 
 export type HistoryAction = {
@@ -49,6 +51,7 @@ const NODE_CONTENT_KEYS = [
   "color",
   "employee",
   "employeeEmail",
+  "groupId",
   "size",
 ] as const satisfies readonly (keyof GraphNode)[];
 
@@ -73,6 +76,14 @@ export function documentLink(link: GraphLink): GraphLink {
   return { id: link.id, source: e.source, target: e.target, kind: link.kind, arrows: link.arrows };
 }
 
+export function documentGroup(group: GraphGroup): GraphGroup {
+  return { id: group.id, title: group.title };
+}
+
+export function sameGroup(a: GraphGroup, b: GraphGroup) {
+  return a.title === b.title;
+}
+
 export function actionKindFromChanges(changes: ChangeItem[]): ChangeKind {
   if (changes.length && changes.every((c) => c.kind === "add")) return "add";
   if (changes.length && changes.every((c) => c.kind === "remove")) return "remove";
@@ -80,7 +91,7 @@ export function actionKindFromChanges(changes: ChangeItem[]): ChangeKind {
 }
 
 export function diffPatch(before: GraphSnapshot, after: GraphSnapshot): GraphPatch {
-  const patch: GraphPatch = { nodes: [], links: [] };
+  const patch: GraphPatch = { nodes: [], links: [], groups: [] };
   const beforeNodes = new Map(before.nodes.map((n) => [n.id, n]));
   const afterNodeIds = new Set<string>();
   for (const node of after.nodes) {
@@ -110,11 +121,26 @@ export function diffPatch(before: GraphSnapshot, after: GraphSnapshot): GraphPat
   for (const link of before.links) {
     if (!afterLinkIds.has(link.id)) patch.links.push({ id: link.id, before: documentLink(link), after: null });
   }
+
+  const beforeGroups = new Map((before.groups ?? []).map((g) => [g.id, g]));
+  const afterGroupIds = new Set<string>();
+  for (const group of after.groups ?? []) {
+    afterGroupIds.add(group.id);
+    const prev = beforeGroups.get(group.id);
+    if (prev === group) continue;
+    if (!prev) patch.groups.push({ id: group.id, before: null, after: documentGroup(group) });
+    else if (!sameGroup(prev, group)) {
+      patch.groups.push({ id: group.id, before: documentGroup(prev), after: documentGroup(group) });
+    }
+  }
+  for (const group of before.groups ?? []) {
+    if (!afterGroupIds.has(group.id)) patch.groups.push({ id: group.id, before: documentGroup(group), after: null });
+  }
   return patch;
 }
 
 export function isEmptyPatch(patch: GraphPatch) {
-  return !patch.nodes.length && !patch.links.length;
+  return !patch.nodes.length && !patch.links.length && !(patch.groups ?? []).length;
 }
 
 function mergeChanges<T>(older: EntityChange<T>[], newer: EntityChange<T>[]) {
@@ -127,7 +153,11 @@ function mergeChanges<T>(older: EntityChange<T>[], newer: EntityChange<T>[]) {
 }
 
 export function mergePatch(older: GraphPatch, newer: GraphPatch): GraphPatch {
-  return { nodes: mergeChanges(older.nodes, newer.nodes), links: mergeChanges(older.links, newer.links) };
+  return {
+    nodes: mergeChanges(older.nodes, newer.nodes),
+    links: mergeChanges(older.links, newer.links),
+    groups: mergeChanges(older.groups ?? [], newer.groups ?? []),
+  };
 }
 
 /**
@@ -152,7 +182,14 @@ export function applyPatch(state: GraphSnapshot, patch: GraphPatch, direction: "
     else links.set(change.id, { ...target });
   }
 
-  return { nodes: [...nodes.values()], links: [...links.values()] };
+  const groups = new Map((state.groups ?? []).map((g) => [g.id, g]));
+  for (const change of patch.groups ?? []) {
+    const target = pick(change);
+    if (!target) groups.delete(change.id);
+    else groups.set(change.id, { ...target });
+  }
+
+  return { nodes: [...nodes.values()], links: [...links.values()], groups: [...groups.values()] };
 }
 
 function nodeLabel(node: GraphNode) {
@@ -198,6 +235,7 @@ export function diffSnapshots(saved: GraphSnapshot, current: GraphSnapshot): Cha
     if ((prev.employee ?? "") !== (node.employee ?? "") || (prev.employeeEmail ?? "") !== (node.employeeEmail ?? "")) {
       details.push("Employee changed");
     }
+    if ((prev.groupId ?? null) !== (node.groupId ?? null)) details.push("Group changed");
     if (Math.abs((prev.size ?? 1) - (node.size ?? 1)) > 0.04) details.push("Size changed");
     if (details.length) {
       changes.push({
@@ -258,6 +296,44 @@ export function diffSnapshots(saved: GraphSnapshot, current: GraphSnapshot): Cha
         detail: `${linkLabel(link, currentNodes)} · ${details.join(" · ")}`,
       });
     }
+  }
+
+  const savedGroups = new Map((saved.groups ?? []).map((g) => [g.id, g]));
+  const currentGroupIds = new Set((current.groups ?? []).map((g) => g.id));
+  for (const group of current.groups ?? []) {
+    const prev = savedGroups.get(group.id);
+    if (!prev) {
+      changes.push({
+        id: `group-add-${group.id}`,
+        kind: "add",
+        target: "group",
+        targetId: group.id,
+        title: `Added group ${group.title.trim() || "Untitled group"}`,
+        detail: "Named group",
+      });
+      continue;
+    }
+    if (prev.title !== group.title) {
+      changes.push({
+        id: `group-upd-${group.id}`,
+        kind: "update",
+        target: "group",
+        targetId: group.id,
+        title: `Renamed group`,
+        detail: fieldChange("Name", prev.title || "Untitled group", group.title || "Untitled group"),
+      });
+    }
+  }
+  for (const group of saved.groups ?? []) {
+    if (currentGroupIds.has(group.id)) continue;
+    changes.push({
+      id: `group-del-${group.id}`,
+      kind: "remove",
+      target: "group",
+      targetId: group.id,
+      title: `Removed group ${group.title.trim() || "Untitled group"}`,
+      detail: "Named group",
+    });
   }
 
   for (const link of saved.links) {

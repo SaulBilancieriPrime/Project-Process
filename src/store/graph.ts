@@ -6,9 +6,11 @@ import {
   applyPatch,
   diffPatch,
   diffSnapshots,
+  documentGroup,
   documentLink,
   documentNode,
   isEmptyPatch,
+  sameGroup,
   mergePatch,
   sameLink,
   sameNodeContent,
@@ -19,12 +21,13 @@ import {
 } from "../graph/history";
 import { mapClientId, type EntityVersions, type FullMap, type MapDelta, type MapTx, type NodePosition } from "../lib/mapSync";
 import { loadDocument, newId } from "../storage";
-import type { GraphDocument, GraphLink, GraphNode } from "../types";
+import type { GraphDocument, GraphGroup, GraphLink, GraphNode } from "../types";
 import { enqueueTx } from "./outbox";
 
 export type GraphState = {
   nodes: GraphNode[];
   links: GraphLink[];
+  groups: GraphGroup[];
   versions: EntityVersions;
   revision: number;
   hydrated: boolean;
@@ -36,11 +39,12 @@ export type GraphState = {
 };
 
 function initialState(): GraphState {
-  const doc = typeof window === "undefined" ? { nodes: [], links: [] } : loadDocument();
+  const doc = typeof window === "undefined" ? { nodes: [], links: [], groups: [] } : loadDocument();
   return {
     nodes: doc.nodes,
     links: doc.links,
-    versions: { nodes: {}, links: {} },
+    groups: doc.groups ?? [],
+    versions: { nodes: {}, links: {}, groups: {} },
     revision: 0,
     hydrated: false,
     hydration: 0,
@@ -55,17 +59,19 @@ export const graphStore = new Store<GraphState>(initialState());
 const POSITION_EPSILON = 0.5;
 
 function snapshot(state: GraphState): GraphSnapshot {
-  return { nodes: state.nodes, links: state.links };
+  return { nodes: state.nodes, links: state.links, groups: state.groups ?? [] };
 }
 
 function baseVersionsFor(patch: GraphPatch, positions: NodePosition[] = []): EntityVersions {
   const { versions } = graphStore.state;
   const nodes: Record<string, number> = {};
   const links: Record<string, number> = {};
+  const groups: Record<string, number> = {};
   for (const c of patch.nodes) nodes[c.id] = versions.nodes[c.id] ?? 0;
   for (const c of patch.links) links[c.id] = versions.links[c.id] ?? 0;
+  for (const c of patch.groups) groups[c.id] = versions.groups[c.id] ?? 0;
   for (const p of positions) delete nodes[p.id];
-  return { nodes, links };
+  return { nodes, links, groups };
 }
 
 function txFromPatch(patch: GraphPatch, label: string): MapTx {
@@ -75,6 +81,8 @@ function txFromPatch(patch: GraphPatch, label: string): MapTx {
     deleteNodeIds: patch.nodes.filter((c) => !c.after).map((c) => c.id),
     upsertLinks: patch.links.flatMap((c) => (c.after ? [c.after] : [])),
     deleteLinkIds: patch.links.filter((c) => !c.after).map((c) => c.id),
+    upsertGroups: patch.groups.flatMap((c) => (c.after ? [c.after] : [])),
+    deleteGroupIds: patch.groups.filter((c) => !c.after).map((c) => c.id),
     baseVersions: baseVersionsFor(patch),
   };
 }
@@ -84,15 +92,23 @@ function trimHistory(actions: HistoryAction[]) {
 }
 
 /** Applies a local edit: updates the document, records undo history, and queues the server write. */
-export function commitGraph(label: string, next: { nodes?: GraphNode[]; links?: GraphLink[] }, coalesceKey?: string) {
+export function commitGraph(
+  label: string,
+  next: { nodes?: GraphNode[]; links?: GraphLink[]; groups?: GraphGroup[] },
+  coalesceKey?: string,
+) {
   const state = graphStore.state;
   const before = snapshot(state);
-  const after: GraphSnapshot = { nodes: next.nodes ?? state.nodes, links: next.links ?? state.links };
+  const after: GraphSnapshot = {
+    nodes: next.nodes ?? state.nodes,
+    links: next.links ?? state.links,
+    groups: next.groups ?? state.groups,
+  };
   const patch = diffPatch(before, after);
   const now = Date.now();
 
   graphStore.setState((s) => {
-    if (isEmptyPatch(patch)) return { ...s, nodes: after.nodes, links: after.links };
+    if (isEmptyPatch(patch)) return { ...s, nodes: after.nodes, links: after.links, groups: after.groups };
     const last = s.actions[s.actions.length - 1];
     let actions: HistoryAction[];
     if (coalesceKey && last?.coalesceKey === coalesceKey && now - last.at < ACTION_COALESCE_MS) {
@@ -113,7 +129,7 @@ export function commitGraph(label: string, next: { nodes?: GraphNode[]; links?: 
         { id: newId(), label, kind: actionKindFromChanges(changes), at: now, coalesceKey, patch, changes },
       ]);
     }
-    return { ...s, nodes: after.nodes, links: after.links, actions, future: [] };
+    return { ...s, nodes: after.nodes, links: after.links, groups: after.groups, actions, future: [] };
   });
 
   if (!isEmptyPatch(patch) && graphStore.state.hydrated) enqueueTx(txFromPatch(patch, label));
@@ -122,7 +138,7 @@ export function commitGraph(label: string, next: { nodes?: GraphNode[]; links?: 
 function restoreTo(target: GraphSnapshot, label: string, history: Pick<GraphState, "actions" | "future">) {
   const current = snapshot(graphStore.state);
   const patch = diffPatch(current, target);
-  graphStore.setState((s) => ({ ...s, nodes: target.nodes, links: target.links, ...history }));
+  graphStore.setState((s) => ({ ...s, nodes: target.nodes, links: target.links, groups: target.groups, ...history }));
   if (!isEmptyPatch(patch) && graphStore.state.hydrated) enqueueTx(txFromPatch(patch, label));
 }
 
@@ -162,19 +178,41 @@ export function persistPositions(positions: NodePosition[], label = "Moved nodes
 
 /** Replaces the whole shared map (import). */
 export function replaceGraph(doc: GraphDocument, label: string) {
-  graphStore.setState((s) => ({ ...s, nodes: doc.nodes, links: doc.links, actions: [], future: [] }));
-  enqueueTx({ label, replace: { ...doc, nodes: doc.nodes.map(documentNode), links: doc.links.map(documentLink) } });
+  graphStore.setState((s) => ({
+    ...s,
+    nodes: doc.nodes,
+    links: doc.links,
+    groups: doc.groups ?? [],
+    actions: [],
+    future: [],
+  }));
+  enqueueTx({
+    label,
+    replace: {
+      ...doc,
+      nodes: doc.nodes.map(documentNode),
+      links: doc.links.map(documentLink),
+      groups: (doc.groups ?? []).map(documentGroup),
+    },
+  });
 }
 
 export function noteVersions(tx: MapTx, versions: EntityVersions) {
   graphStore.setState((s) => {
-    const base = tx.replace ? { nodes: {}, links: {} } : s.versions;
-    const merge = (current: Record<string, number>, incoming: Record<string, number>) => {
+    const base = tx.replace ? { nodes: {}, links: {}, groups: {} } : s.versions;
+    const merge = (current: Record<string, number>, incoming: Record<string, number> = {}) => {
       const out = { ...current };
       for (const [id, v] of Object.entries(incoming)) out[id] = Math.max(out[id] ?? 0, v);
       return out;
     };
-    return { ...s, versions: { nodes: merge(base.nodes, versions.nodes), links: merge(base.links, versions.links) } };
+    return {
+      ...s,
+      versions: {
+        nodes: merge(base.nodes, versions.nodes),
+        links: merge(base.links, versions.links),
+        groups: merge(base.groups, versions.groups),
+      },
+    };
   });
 }
 
@@ -185,6 +223,7 @@ export function applyFullMap(map: FullMap): ChangeItem[] {
     ...s,
     nodes: map.nodes,
     links: map.links,
+    groups: map.groups ?? [],
     versions: map.versions,
     revision: map.revision,
     you: map.you,
@@ -193,7 +232,7 @@ export function applyFullMap(map: FullMap): ChangeItem[] {
     actions: wasHydrated ? s.actions : [],
     future: wasHydrated ? s.future : [],
   }));
-  return wasHydrated ? diffSnapshots(before, { nodes: map.nodes, links: map.links }) : [];
+  return wasHydrated ? diffSnapshots(before, { nodes: map.nodes, links: map.links, groups: map.groups ?? [] }) : [];
 }
 
 function near(a: number | undefined, b: number | undefined) {
@@ -207,7 +246,12 @@ export function applyDelta(delta: MapDelta): ChangeItem[] {
   const state = graphStore.state;
   const nodes = new Map(state.nodes.map((n) => [n.id, n]));
   const links = new Map(state.links.map((l) => [l.id, l]));
-  const versions = { nodes: { ...state.versions.nodes }, links: { ...state.versions.links } };
+  const groups = new Map((state.groups ?? []).map((g) => [g.id, g]));
+  const versions = {
+    nodes: { ...state.versions.nodes },
+    links: { ...state.versions.links },
+    groups: { ...state.versions.groups },
+  };
   let changed = false;
 
   for (const row of delta.nodes) {
@@ -246,12 +290,32 @@ export function applyDelta(delta: MapDelta): ChangeItem[] {
     changed = true;
   }
 
+  for (const row of delta.groups ?? []) {
+    const id = row.item.id;
+    versions.groups[id] = Math.max(versions.groups[id] ?? 0, row.version);
+    if (row.client === me) continue;
+    const current = groups.get(id);
+    if (row.deleted) {
+      if (current) {
+        groups.delete(id);
+        changed = true;
+      }
+      continue;
+    }
+    if (current && sameGroup(current, row.item)) continue;
+    groups.set(id, row.item);
+    changed = true;
+  }
+
   const before = snapshot(state);
-  const after: GraphSnapshot = changed ? { nodes: [...nodes.values()], links: [...links.values()] } : before;
+  const after: GraphSnapshot = changed
+    ? { nodes: [...nodes.values()], links: [...links.values()], groups: [...groups.values()] }
+    : before;
   graphStore.setState((s) => ({
     ...s,
     nodes: after.nodes,
     links: after.links,
+    groups: after.groups,
     versions,
     revision: Math.max(s.revision, delta.revision),
     you: delta.you ?? s.you,

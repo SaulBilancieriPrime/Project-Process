@@ -23,7 +23,7 @@ const MAX_RETRY_DELAY_MS = 30_000;
 type Kind = keyof EntityVersions;
 
 /** Maps `${id}@${baseVersion}` to the version our own write produced, so queued edits chain correctly. */
-const ownBumps: Record<Kind, Map<string, number>> = { nodes: new Map(), links: new Map() };
+const ownBumps: Record<Kind, Map<string, number>> = { nodes: new Map(), links: new Map(), groups: new Map() };
 
 type OutboxHandlers = {
   onApplied: (tx: MapTx, versions: EntityVersions) => void;
@@ -62,16 +62,16 @@ function resolveTx(tx: MapTx): MapTx {
   if (!tx.baseVersions) return tx;
   const resolve = (kind: Kind) =>
     Object.fromEntries(
-      Object.entries(tx.baseVersions![kind]).map(([id, base]) => [id, resolveBase(kind, id, base)]),
+      Object.entries(tx.baseVersions![kind] ?? {}).map(([id, base]) => [id, resolveBase(kind, id, base)]),
     );
-  return { ...tx, baseVersions: { nodes: resolve("nodes"), links: resolve("links") } };
+  return { ...tx, baseVersions: { nodes: resolve("nodes"), links: resolve("links"), groups: resolve("groups") } };
 }
 
 function recordBumps(sent: MapTx, versions: EntityVersions) {
   if (!sent.baseVersions) return;
-  for (const kind of ["nodes", "links"] as const) {
-    for (const [id, version] of Object.entries(versions[kind])) {
-      const base = sent.baseVersions[kind][id] ?? 0;
+  for (const kind of ["nodes", "links", "groups"] as const) {
+    for (const [id, version] of Object.entries(versions[kind] ?? {})) {
+      const base = sent.baseVersions[kind]?.[id] ?? 0;
       ownBumps[kind].set(`${id}@${base}`, version);
     }
   }

@@ -72,3 +72,28 @@ JOIN sys.database_principals AS r ON r.principal_id = rm.role_principal_id
 JOIN sys.database_principals AS m ON m.principal_id = rm.member_principal_id
 WHERE m.name = N'id-primereq-prototype-project-process';
 GO
+
+/* ---------------------------------------------------------------------------
+   STEP 4 - Named node groups (additive, safe for older app builds)
+--------------------------------------------------------------------------- */
+IF OBJECT_ID(N'projectprocess.Group', N'U') IS NULL
+CREATE TABLE projectprocess.[Group] (
+    id nvarchar(160) NOT NULL CONSTRAINT PK_projectprocess_Group PRIMARY KEY,
+    title nvarchar(400) NOT NULL,
+    version int NOT NULL CONSTRAINT DF_projectprocess_Group_ver DEFAULT (1),
+    is_deleted bit NOT NULL CONSTRAINT DF_projectprocess_Group_del DEFAULT (0),
+    updated_rev bigint NOT NULL CONSTRAINT DF_projectprocess_Group_rev DEFAULT (0),
+    updated_client nvarchar(64) NULL,
+    updated_at datetime2 NOT NULL,
+    updated_by nvarchar(200) NULL
+);
+GO
+IF COL_LENGTH(N'projectprocess.Node', N'group_id') IS NULL
+    ALTER TABLE projectprocess.Node ADD group_id nvarchar(160) NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_projectprocess_Node_group' AND object_id = OBJECT_ID(N'projectprocess.Node'))
+    CREATE INDEX IX_projectprocess_Node_group ON projectprocess.Node (group_id);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_projectprocess_Group_rev' AND object_id = OBJECT_ID(N'projectprocess.Group'))
+    CREATE INDEX IX_projectprocess_Group_rev ON projectprocess.[Group] (updated_rev);
+GO

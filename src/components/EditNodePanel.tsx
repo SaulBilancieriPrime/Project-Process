@@ -9,9 +9,10 @@ import {
 import { handleOverlayWheel } from "../lib/overlayScroll";
 import { draftStore } from "../store/drafts";
 import { cx, editFloat, field, fieldArea, fieldLabel, swatch, swatchOn } from "../styles";
-import type { ColorBy, GraphNode } from "../types";
+import type { ColorBy, GraphGroup, GraphNode } from "../types";
 import DeferredTextField from "./DeferredTextField";
 import EmployeePicker from "./EmployeePicker";
+import GroupPicker from "./GroupPicker";
 import SizePresetPicker from "./SizePresetPicker";
 
 export type NodeEditPreview = {
@@ -26,19 +27,23 @@ export type NodeEditPatch = {
   color?: string;
   employee: string;
   employeeEmail: string;
+  groupId: string | null;
 };
 
 type Props = {
   node: GraphNode;
+  nodes: GraphNode[];
+  groups: GraphGroup[];
   colorBy: ColorBy;
   embedded?: boolean;
   style?: CSSProperties;
   onSave: (patch: Partial<NodeEditPatch>) => void;
+  onCreateGroup: (title: string) => void;
 };
 
 const SAVED_FLASH_MS = 1600;
 
-export default function EditNodePanel({ node, colorBy, embedded = false, style, onSave }: Props) {
+export default function EditNodePanel({ node, nodes, groups, colorBy, embedded = false, style, onSave, onCreateGroup }: Props) {
   const accent = nodeColor(node, colorBy);
   const unsaved = useStore(draftStore, (s) => s.labels);
   const [savedFlash, setSavedFlash] = useState(false);
@@ -65,7 +70,7 @@ export default function EditNodePanel({ node, colorBy, embedded = false, style, 
     <div
       className={
         embedded
-          ? "h-full overflow-auto p-3"
+          ? "min-h-0 flex-1 overflow-hidden p-3"
           : `${editFloat} is-tinted left-3 bottom-3 max-h-[calc(100vh-76px)] overflow-auto`
       }
       style={embedded ? style : { ...style, ["--edit-accent" as string]: accent }}
@@ -127,6 +132,19 @@ export default function EditNodePanel({ node, colorBy, embedded = false, style, 
         name={node.employee ?? ""}
         email={node.employeeEmail ?? ""}
         onChange={(next) => save({ employee: next.name, employeeEmail: next.email })}
+      />
+      <label className={fieldLabel}>
+        Group <span className="font-normal normal-case tracking-normal">· saves instantly</span>
+      </label>
+      <GroupPicker
+        groupId={node.groupId ?? null}
+        groups={groups}
+        nodes={nodes}
+        colorBy={colorBy}
+        onChange={(groupId) => {
+          if ((node.groupId ?? null) !== groupId) save({ groupId });
+        }}
+        onCreate={onCreateGroup}
       />
       <label className={fieldLabel}>
         Size <span className="font-normal normal-case tracking-normal">· saves instantly</span>
