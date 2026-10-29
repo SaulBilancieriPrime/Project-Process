@@ -217,7 +217,7 @@ export default function HelpTab() {
         <div className="grid grid-cols-2 gap-1.5">
           <Card icon={<IcoFilter />} title="Search & filter" body="Search titles, or tap status pills and people in the left rail." />
           <Card icon={<IcoStatus />} title="Status" body="Incomplete, in progress, and done — shown as the ring on each ball." />
-          <Card icon={<IcoPeople />} title="Assign people" body="Search by name or email on a node. Their photo sits on the ball." />
+          <Card icon={<IcoPeople />} title="Assign people" body="Pick a face in the 5-column grid on a node or multi-select panel. Click again to unassign. Hover for name and email." />
           <Card icon={<IcoView />} title="View" body="Fit, Reorg, Physics, Text, Cards, and Pulse live under View; force sliders are under Advanced. These stay on this device — Reset view prefs restores defaults." />
         </div>
       </section>

@@ -29,9 +29,8 @@ export default function SelectionPanel({ nodes, colorBy, style, onStatus, onAssi
 
   return (
     <div
-      className="item-actions edit-float fixed z-[86] w-[220px] rounded-lg border border-[var(--line)] bg-[var(--card)] px-2 py-1.5 shadow-[var(--shadow)]"
+      className="item-actions edit-float fixed z-[86] flex max-h-[min(420px,calc(100vh-5rem))] w-[220px] flex-col rounded-lg border border-[var(--line)] bg-[var(--card)] px-2 py-1.5 shadow-[var(--shadow)]"
       style={style}
-      onWheel={handleOverlayWheel}
     >
       <div className="mb-1.5 flex items-center justify-between gap-2">
         <strong className="text-[11px] font-semibold text-[var(--text)]">{nodes.length} selected</strong>
@@ -57,8 +56,10 @@ export default function SelectionPanel({ nodes, colorBy, style, onStatus, onAssi
           );
         })}
       </div>
-      <span className="mb-1 block text-[8px] font-bold tracking-wide text-[var(--muted)] uppercase">Assignee</span>
-      <EmployeePicker name={sharedName} email={sharedEmail} onChange={onAssign} />
+      <span className="mb-1 block shrink-0 text-[8px] font-bold tracking-wide text-[var(--muted)] uppercase">Assignee</span>
+      <div className="min-h-0 flex-1 overflow-auto" onWheel={handleOverlayWheel}>
+        <EmployeePicker name={sharedName} email={sharedEmail} onChange={onAssign} />
+      </div>
     </div>
   );
 }

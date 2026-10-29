@@ -23,6 +23,7 @@ import { mergeViewSettings } from "./graph/viewSettings";
 import { degToRad, rotatePoint, viewCoverOffset } from "./graph/viewRotation";
 import { isFiltered, linkEnds } from "./graph/visibility";
 import { useMapSync } from "./hooks/useMapSync";
+import { selectionPanelPlacement } from "./lib/floatPanelPlacement";
 import { DEFAULT_SETTINGS } from "./schema/graph";
 import {
   downloadJson,
@@ -699,13 +700,15 @@ export default function App() {
     if (selectedIds.length > 1) {
       const lives = selectedIds.map((id) => liveNode(id)).filter((n): n is GraphNode => Boolean(n && n.x != null && n.y != null));
       if (!lives.length) return { left: 80, top: 80 };
-      const x = lives.reduce((s, n) => s + (n.x ?? 0), 0) / lives.length;
-      const y = lives.reduce((s, n) => s + (n.y ?? 0), 0) / lives.length;
-      const s = screenOf(x, y);
-      return {
-        left: Math.min(window.innerWidth - 232, Math.max(12, s.left + 16)),
-        top: Math.min(window.innerHeight - 220, Math.max(60, s.top - 28)),
-      };
+      const k = zoom || 1;
+      const enlarge = Number.isFinite(settings.enlarge) ? settings.enlarge : 1;
+      const screens = lives.map((n) => {
+        const s = screenOf(n.x!, n.y!);
+        const base = (2.7 + n.size * 2 + Math.max(0, 2.1 - n.level * 0.32)) * enlarge;
+        const r = Math.min(base * k, 6.5 + n.size * 4.5 * enlarge) + 8;
+        return { left: s.left, top: s.top, r };
+      });
+      return selectionPanelPlacement(screens);
     }
     if (!picked) return { left: 80, top: 80 };
     if (picked.kind === "node") {
@@ -728,7 +731,7 @@ export default function App() {
       left: Math.min(window.innerWidth - 160, Math.max(12, s.left + 12)),
       top: Math.min(window.innerHeight - 56, Math.max(60, s.top - 18)),
     };
-  }, [picked, selectedIds, links, size, zoom, viewRotation]);
+  }, [picked, selectedIds, links, size, zoom, viewRotation, settings.enlarge]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
