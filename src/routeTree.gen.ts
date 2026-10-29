@@ -10,12 +10,18 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiMapRouteImport } from './routes/api/map'
 import { Route as ApiPeoplePhotoRouteImport } from './routes/api/people/photo'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiHealthRoute = ApiHealthRouteImport.update({
+  id: '/api/health',
+  path: '/api/health',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiMapRoute = ApiMapRouteImport.update({
@@ -31,30 +37,34 @@ const ApiPeoplePhotoRoute = ApiPeoplePhotoRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/health': typeof ApiHealthRoute
   '/api/map': typeof ApiMapRoute
   '/api/people/photo': typeof ApiPeoplePhotoRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/health': typeof ApiHealthRoute
   '/api/map': typeof ApiMapRoute
   '/api/people/photo': typeof ApiPeoplePhotoRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/health': typeof ApiHealthRoute
   '/api/map': typeof ApiMapRoute
   '/api/people/photo': typeof ApiPeoplePhotoRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/map' | '/api/people/photo'
+  fullPaths: '/' | '/api/health' | '/api/map' | '/api/people/photo'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/map' | '/api/people/photo'
-  id: '__root__' | '/' | '/api/map' | '/api/people/photo'
+  to: '/' | '/api/health' | '/api/map' | '/api/people/photo'
+  id: '__root__' | '/' | '/api/health' | '/api/map' | '/api/people/photo'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiHealthRoute: typeof ApiHealthRoute
   ApiMapRoute: typeof ApiMapRoute
   ApiPeoplePhotoRoute: typeof ApiPeoplePhotoRoute
 }
@@ -66,6 +76,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/health': {
+      id: '/api/health'
+      path: '/api/health'
+      fullPath: '/api/health'
+      preLoaderRoute: typeof ApiHealthRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/map': {
@@ -87,6 +104,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiHealthRoute: ApiHealthRoute,
   ApiMapRoute: ApiMapRoute,
   ApiPeoplePhotoRoute: ApiPeoplePhotoRoute,
 }

@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "@tanstack/react-store";
+import DraftPrompt from "./components/DraftPrompt";
 import EditLinkPanel from "./components/EditLinkPanel";
 import { type NodeEditPreview } from "./components/EditNodePanel";
 import LeftSidePanel from "./components/LeftSidePanel";
 import PlusMenu from "./components/PlusMenu";
 import PlusMenuButton from "./components/PlusMenuButton";
 import ViewCompass from "./components/ViewCompass";
-import GraphCanvas, { type GraphHandle } from "./components/GraphCanvas";
+import GraphCanvas, { type GraphHandle, type LassoMode } from "./components/GraphCanvas";
 import Header from "./components/Header";
 import HistoryPanel from "./components/HistoryPanel";
 import InfoPanel from "./components/InfoPanel";
@@ -14,35 +15,35 @@ import LinkContextMenu from "./components/LinkContextMenu";
 import NodeContextMenu from "./components/NodeContextMenu";
 import NodePreviewPanel from "./components/NodePreviewPanel";
 import SelectionPanel from "./components/SelectionPanel";
-import SyncChangesModal from "./components/SyncChangesModal";
-import {
-  ACTION_COALESCE_MS,
-  actionKindFromChanges,
-  cloneSnapshot,
-  diffSnapshots,
-  mergeAction,
-  type ChangeItem,
-  type HistoryAction,
-} from "./graph/history";
-import { fetchSharedMap, postMapTx, txFromSnapshots, type MapTx } from "./lib/mapSync";
+import SyncChangesFeed from "./components/SyncChangesFeed";
 import { nodeColor } from "./graph/colors";
 import type { WorkflowStatus } from "./graph/workflowStatus";
 import { addChild, addLink, blankNode, deleteNode, insertNodeBetween } from "./graph/ops";
 import { mergeViewSettings } from "./graph/viewSettings";
 import { degToRad, rotatePoint, viewCoverOffset } from "./graph/viewRotation";
 import { isFiltered, linkEnds } from "./graph/visibility";
+import { useMapSync } from "./hooks/useMapSync";
+import { DEFAULT_SETTINGS } from "./schema/graph";
 import {
   downloadJson,
-  loadDocument,
   loadViewRotation,
   loadViewSettings,
   readJsonFile,
-  newId,
   saveDocument,
   saveViewRotation,
   saveViewSettings,
 } from "./storage";
-import { patchUi, showToast as pushToast, toggleHistory, toggleInfo, uiStore } from "./store/ui";
+import { discardDrafts, hasDrafts, saveDrafts } from "./store/drafts";
+import {
+  commitGraph,
+  graphStore,
+  persistPositions,
+  redoNext,
+  replaceGraph,
+  undoLast,
+  undoTo,
+} from "./store/graph";
+import { patchUi, showToast, toggleHistory, toggleInfo, uiStore } from "./store/ui";
 import { ctxBox, cx } from "./styles";
 import type { ArrowStyle, GraphLink, GraphNode, GraphSettings } from "./types";
 
@@ -55,13 +56,16 @@ type PickState = { kind: "node" | "link"; id: string };
 type PlaceState = { parentId?: string; size?: number };
 type PendingEdit = { kind: "node"; id: string } | { kind: "link"; id: string };
 
+const POSITION_EPSILON = 0.5;
+
 export default function App() {
-  const initial = useMemo(() => loadDocument(), []);
-  const [nodes, setNodes] = useState<GraphNode[]>(initial.nodes);
-  const [links, setLinks] = useState<GraphLink[]>(initial.links);
-  const [settings, setSettings] = useState<GraphSettings>(() =>
-    mergeViewSettings(initial.settings, loadViewSettings(initial.settings)),
-  );
+  const nodes = useStore(graphStore, (s) => s.nodes);
+  const links = useStore(graphStore, (s) => s.links);
+  const actions = useStore(graphStore, (s) => s.actions);
+  const future = useStore(graphStore, (s) => s.future);
+  const hydration = useStore(graphStore, (s) => s.hydration);
+  const liveStatus = useMapSync();
+  const [settings, setSettings] = useState<GraphSettings>(() => loadViewSettings(DEFAULT_SETTINGS) ?? DEFAULT_SETTINGS);
   const theme = useStore(uiStore, (s) => s.theme);
   const historyOpen = useStore(uiStore, (s) => s.historyOpen);
   const infoOpen = useStore(uiStore, (s) => s.infoOpen);
@@ -78,10 +82,8 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [statusFilters, setStatusFilters] = useState<WorkflowStatus[]>([]);
   const [employeeFilter, setEmployeeFilter] = useState<string | null>(null);
+  const [draftPrompt, setDraftPrompt] = useState<{ proceed: () => void } | null>(null);
   const hideFiltered = Boolean(search.trim()) || statusFilters.length > 0 || employeeFilter != null;
-  const [liveStatus, setLiveStatus] = useState<"offline" | "live" | "syncing">("offline");
-  const [syncLocked, setSyncLocked] = useState(false);
-  const [syncChanges, setSyncChanges] = useState<ChangeItem[]>([]);
   const [size, setSize] = useState({ w: 1200, h: 800 });
   const [zoom, setZoom] = useState(1);
   const [viewRotation, setViewRotation] = useState(loadViewRotation);
@@ -91,27 +93,27 @@ export default function App() {
   const graphRef = useRef<GraphHandle | undefined>(undefined);
   const importRef = useRef<HTMLInputElement>(null);
   const persistTimer = useRef<number | null>(null);
-  const persistChain = useRef(Promise.resolve());
-  const revisionRef = useRef(0);
-  const hydratedRef = useRef(false);
-  const syncingRef = useRef(false);
-  const syncLockedRef = useRef(false);
-  const graphSnapRef = useRef({ nodes, links, settings });
-  graphSnapRef.current = { nodes, links, settings };
-  const offlineToastRef = useRef(false);
-  const lastPosHash = useRef("");
+  const persistedPositions = useRef(new Map<string, { x: number; y: number }>());
   const fittedOnce = useRef(false);
   const editSaveRef = useRef<(() => void) | null>(null);
-  const [actions, setActions] = useState<HistoryAction[]>([]);
-  const [future, setFuture] = useState<HistoryAction[]>([]);
   const [editLocked, setEditLocked] = useState(false);
   const [previewAnchorId, setPreviewAnchorId] = useState<string | null>(null);
   const previewOverRef = useRef(false);
   const [pendingEdit, setPendingEdit] = useState<PendingEdit | null>(null);
   const [editVisual, setEditVisual] = useState<NodeEditPreview | null>(null);
 
-  const editing = nodes.find((n) => n.id === editingId) ?? null;
+  const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
+  const editing = editingId ? nodeById.get(editingId) ?? null : null;
   const editingLink = links.find((l) => l.id === editingLinkId) ?? null;
+
+  /** Runs `proceed` now, or after the user resolves unsaved Title/Description drafts. */
+  const guardDraft = useCallback((proceed: () => void) => {
+    if (!hasDrafts()) {
+      proceed();
+      return;
+    }
+    setDraftPrompt({ proceed });
+  }, []);
 
   useEffect(() => {
     if (hoveredId) {
@@ -125,7 +127,7 @@ export default function App() {
 
   const previewTargetId =
     !editingLink && !menu && !placing && !connect && !editLocked ? (hoveredId ?? previewAnchorId) : null;
-  const preview = previewTargetId ? nodes.find((n) => n.id === previewTargetId) ?? null : null;
+  const preview = previewTargetId ? nodeById.get(previewTargetId) ?? null : null;
   const graphNodes = useMemo(() => {
     if (!editVisual || !editingId) return nodes;
     return nodes.map((n) => (n.id === editingId ? { ...n, size: editVisual.size, color: editVisual.color } : n));
@@ -145,6 +147,13 @@ export default function App() {
   }, [settings]);
 
   useEffect(() => {
+    fittedOnce.current = false;
+    persistedPositions.current = new Map(
+      graphStore.state.nodes.flatMap((n) => (n.x != null && n.y != null ? [[n.id, { x: n.x, y: n.y }] as const] : [])),
+    );
+  }, [hydration]);
+
+  useEffect(() => {
     const el = stageRef.current;
     if (!el) return;
     const ro = new ResizeObserver(() => {
@@ -158,8 +167,7 @@ export default function App() {
   useEffect(() => {
     if (persistTimer.current) window.clearTimeout(persistTimer.current);
     persistTimer.current = window.setTimeout(() => {
-      const doc = { nodes, links, settings };
-      saveDocument(doc);
+      saveDocument({ nodes, links, settings });
     }, 450);
     return () => {
       if (persistTimer.current) window.clearTimeout(persistTimer.current);
@@ -169,6 +177,26 @@ export default function App() {
   useEffect(() => {
     if (!editing && !editingLink) setEditLocked(false);
   }, [editing, editingLink]);
+
+  // Remote deletes or undo can remove what the UI is pointing at.
+  useEffect(() => {
+    const linkIds = new Set(links.map((l) => l.id));
+    setEditingId((cur) => (cur && !nodeById.has(cur) ? null : cur));
+    setEditingLinkId((cur) => (cur && !linkIds.has(cur) ? null : cur));
+    setSelectedIds((prev) => (prev.every((id) => nodeById.has(id)) ? prev : prev.filter((id) => nodeById.has(id))));
+    setPicked((cur) => {
+      if (!cur) return null;
+      if (cur.kind === "node" && !nodeById.has(cur.id)) return null;
+      if (cur.kind === "link" && !linkIds.has(cur.id)) return null;
+      return cur;
+    });
+    setMenu((cur) => {
+      if (!cur || cur.kind === "canvas") return cur;
+      if (cur.kind === "node" && !nodeById.has(cur.id)) return null;
+      if (cur.kind === "link" && !linkIds.has(cur.id)) return null;
+      return cur;
+    });
+  }, [nodeById, links]);
 
   const dismissEditPanel = useCallback(() => {
     setEditLocked(false);
@@ -231,43 +259,49 @@ export default function App() {
     };
   }, [menu, editingLinkId, editLocked, dismissEditPanel]);
 
+  function clearInteraction() {
+    setMenu(null);
+    setConnect(null);
+    setPlacing(null);
+    setPlusOpen(false);
+    setEditingId(null);
+    setEditingLinkId(null);
+    setPicked(null);
+    setSelectedIds([]);
+    setPreviewAnchorId(null);
+    setPendingEdit(null);
+    setEditVisual(null);
+    patchUi({ historyOpen: false, infoOpen: false });
+  }
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
       if (e.key === "Escape") {
-        if (editLocked) return;
-        setMenu(null);
-        setConnect(null);
-        setPlacing(null);
-        setPlusOpen(false);
-        setEditingId(null);
-        setEditingLinkId(null);
-        setPicked(null);
-        setSelectedIds([]);
-        setPreviewAnchorId(null);
-        setPendingEdit(null);
-        setEditVisual(null);
-        patchUi({ historyOpen: false, infoOpen: false });
+        if (editLocked || draftPrompt) return;
+        guardDraft(clearInteraction);
       }
-      if (typing) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
         if (editLocked) editSaveRef.current?.();
+        else if (hasDrafts()) saveDrafts();
+        return;
       }
+      if (typing) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
         e.preventDefault();
-        if (!editLocked) undoLast();
+        if (!editLocked) undo();
       }
       if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey))) {
         e.preventDefault();
-        if (!editLocked) redoLast();
+        if (!editLocked) redo();
       }
       if (e.key === "Delete") {
         if (editLocked || editingLinkId) return;
         if (picked?.kind === "link") removeLink(picked.id);
         else if (selectedIds.length) removeNodes(selectedIds);
       }
-      if (e.key.toLowerCase() === "n") {
+      if (e.key.toLowerCase() === "n" && !e.ctrlKey && !e.metaKey) {
         startPlace();
       }
     };
@@ -275,149 +309,13 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  const showToast = useCallback((msg: string) => {
-    pushToast(msg);
-  }, []);
+  function undo() {
+    if (undoLast()) showToast("Undid action");
+  }
 
-  const persistTx = useCallback((tx: MapTx | null, opts?: { silent?: boolean; expect?: { nodes: GraphNode[]; links: GraphLink[]; settings: GraphSettings } }) => {
-    if (!tx || !hydratedRef.current) return;
-    persistChain.current = persistChain.current.then(async () => {
-      const lockCanvas = !opts?.silent;
-      syncingRef.current = true;
-      setLiveStatus("syncing");
-      if (lockCanvas) {
-        syncLockedRef.current = true;
-        setSyncLocked(true);
-      }
-      try {
-        const result = await postMapTx(tx);
-        if (result.ok) {
-          revisionRef.current = result.revision;
-          offlineToastRef.current = false;
-          if (lockCanvas) {
-            const map = await fetchSharedMap();
-            if (map.ok && !map.unchanged) {
-              const before = opts?.expect ?? graphSnapRef.current;
-              const appliedSettings = mergeViewSettings(map.settings, before.settings);
-              const incoming = diffSnapshots(before, { ...map, settings: appliedSettings });
-              setNodes(map.nodes);
-              setLinks(map.links);
-              setSettings(appliedSettings);
-              revisionRef.current = map.revision;
-              lastPosHash.current = JSON.stringify(map.nodes.map((n) => [n.id, n.x, n.y, n.fx, n.fy]));
-              saveDocument(map);
-              const live = liveGraphNodes();
-              for (const n of live) {
-                const match = map.nodes.find((item) => item.id === n.id);
-                if (!match) continue;
-                n.x = match.x;
-                n.y = match.y;
-                n.fx = match.fx;
-                n.fy = match.fy;
-              }
-              if (incoming.length) setSyncChanges(incoming);
-            }
-          }
-          setLiveStatus("live");
-          return;
-        }
-        setLiveStatus("offline");
-        if (!offlineToastRef.current) {
-          offlineToastRef.current = true;
-          showToast("Working offline — Azure SQL unavailable");
-        }
-      } catch {
-        setLiveStatus("offline");
-      } finally {
-        syncingRef.current = false;
-        if (lockCanvas) {
-          syncLockedRef.current = false;
-          setSyncLocked(false);
-        }
-      }
-    });
-  }, [showToast]);
-
-  const persistPositions = useCallback((moved: GraphNode[]) => {
-    if (!hydratedRef.current || !moved.length) return;
-    const hash = JSON.stringify(moved.map((n) => [n.id, n.x, n.y, n.fx, n.fy]));
-    if (hash === lastPosHash.current) return;
-    lastPosHash.current = hash;
-    persistTx({ label: "Updated positions", upsertNodes: moved }, { silent: true });
-  }, [persistTx]);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      const map = await fetchSharedMap();
-      if (cancelled) return;
-      if (!map.ok) {
-        setLiveStatus("offline");
-        return;
-      }
-      if (map.unchanged) return;
-      setNodes(map.nodes);
-      setLinks(map.links);
-      setSettings(mergeViewSettings(map.settings, loadViewSettings(map.settings)));
-      setActions([]);
-      setFuture([]);
-      revisionRef.current = map.revision;
-      hydratedRef.current = true;
-      lastPosHash.current = JSON.stringify(map.nodes.map((n) => [n.id, n.x, n.y, n.fx, n.fy]));
-      saveDocument(map);
-      setLiveStatus("live");
-      fittedOnce.current = false;
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    const timer = window.setInterval(async () => {
-      if (document.hidden || syncingRef.current || syncLockedRef.current || !hydratedRef.current) return;
-      const map = await fetchSharedMap(revisionRef.current);
-      if (!map.ok) {
-        setLiveStatus("offline");
-        return;
-      }
-      if (map.unchanged) {
-        setLiveStatus("live");
-        return;
-      }
-      const appliedSettings = mergeViewSettings(map.settings, graphSnapRef.current.settings);
-      const incoming = diffSnapshots(graphSnapRef.current, { ...map, settings: appliedSettings });
-      if (incoming.length) {
-        syncingRef.current = true;
-        syncLockedRef.current = true;
-        setSyncLocked(true);
-        setLiveStatus("syncing");
-      }
-      setNodes(map.nodes);
-      setLinks(map.links);
-      setSettings(appliedSettings);
-      revisionRef.current = map.revision;
-      lastPosHash.current = JSON.stringify(map.nodes.map((n) => [n.id, n.x, n.y, n.fx, n.fy]));
-      saveDocument(map);
-      const live = liveGraphNodes();
-      for (const n of live) {
-        const match = map.nodes.find((item) => item.id === n.id);
-        if (!match) continue;
-        n.x = match.x;
-        n.y = match.y;
-        n.fx = match.fx;
-        n.fy = match.fy;
-      }
-      if (incoming.length) {
-        setSyncChanges(incoming);
-        syncingRef.current = false;
-        syncLockedRef.current = false;
-        setSyncLocked(false);
-      }
-      setLiveStatus("live");
-    }, 2000);
-    return () => window.clearInterval(timer);
-  }, []);
+  function redo() {
+    if (redoNext()) showToast("Redid action");
+  }
 
   function openContextMenu(next: MenuState) {
     if (editLocked) return;
@@ -436,145 +334,24 @@ export default function App() {
     }
   }
 
-  function applyPhysicsFreeze(physicsOn: boolean) {
-    const live = liveGraphNodes();
-    const freeze = (n: GraphNode) => {
-      try {
-        if (!physicsOn) {
-          if (typeof n.x === "number") n.fx = n.x;
-          if (typeof n.y === "number") n.fy = n.y;
-        } else {
-          delete n.fx;
-          delete n.fy;
-          n.fx = undefined;
-          n.fy = undefined;
-        }
-      } catch {
-        /* engine node objects can reject some writes */
-      }
-    };
-    live.forEach(freeze);
-    nodes.forEach((n) => {
-      const match = live.find((item) => item.id === n.id);
-      if (match && typeof match.x === "number") n.x = match.x;
-      if (match && typeof match.y === "number") n.y = match.y;
-      freeze(n);
-    });
+  function liveNode(id: string) {
+    return liveGraphNodes().find((n) => n.id === id) ?? nodeById.get(id);
   }
 
-  function applyGraph(
-    label: string,
-    next: { nodes?: GraphNode[]; links?: GraphLink[]; settings?: GraphSettings },
-    coalesceKey?: string,
-  ) {
-    if (syncLockedRef.current) return;
-    const afterNodes = next.nodes ?? nodes;
-    const afterLinks = next.links ?? links;
-    const afterSettings = next.settings ?? settings;
-    const before = cloneSnapshot(nodes, links, settings);
-    const after = cloneSnapshot(afterNodes, afterLinks, afterSettings);
-    const changes = diffSnapshots(before, after);
-    if (next.nodes) setNodes(afterNodes);
-    if (next.links) setLinks(afterLinks);
-    if (next.settings) setSettings(mergeViewSettings(afterSettings, settings));
-    if (!changes.length) return;
-    persistTx(txFromSnapshots(before, after, label), { expect: after });
-    setFuture([]);
-    setActions((prev) => {
-      const last = prev[prev.length - 1];
-      if (
-        coalesceKey &&
-        last?.coalesceKey === coalesceKey &&
-        Date.now() - last.at < ACTION_COALESCE_MS
-      ) {
-        return [...prev.slice(0, -1), mergeAction(last, after, label)];
-      }
-      return [
-        ...prev,
-        {
-          id: newId(),
-          label,
-          kind: actionKindFromChanges(changes),
-          at: Date.now(),
-          coalesceKey,
-          before,
-          after,
-          changes,
-        },
-      ];
-    });
-  }
-
-  function restoreSnapshot(snap: { nodes: GraphNode[]; links: GraphLink[]; settings: GraphSettings }, persistLabel?: string) {
-    if (persistLabel) persistTx(txFromSnapshots({ nodes, links, settings }, snap, persistLabel), { expect: snap });
-    setNodes(snap.nodes);
-    setLinks(snap.links);
-    setSettings(mergeViewSettings(snap.settings, settings));
-    setEditingId((cur) => (cur && snap.nodes.some((n) => n.id === cur) ? cur : null));
-    setEditingLinkId((cur) => (cur && snap.links.some((l) => l.id === cur) ? cur : null));
-    setSelectedIds((prev) => prev.filter((item) => snap.nodes.some((n) => n.id === item)));
-    setPicked((cur) => {
-      if (!cur) return null;
-      if (cur.kind === "node" && !snap.nodes.some((n) => n.id === cur.id)) return null;
-      if (cur.kind === "link" && !snap.links.some((l) => l.id === cur.id)) return null;
-      return cur;
-    });
-    setMenu(null);
-    const live = liveGraphNodes();
-    for (const n of live) {
-      const match = snap.nodes.find((item) => item.id === n.id);
-      if (!match) continue;
-      n.x = match.x;
-      n.y = match.y;
-      n.fx = match.fx;
-      n.fy = match.fy;
-    }
-  }
-
-  function undoAction(id: string) {
-    const idx = actions.findIndex((a) => a.id === id);
-    if (idx < 0) return;
-    const target = actions[idx];
-    const dropped = actions.slice(idx);
-    restoreSnapshot(target.before, "Undid action");
-    setActions((prev) => prev.slice(0, idx));
-    setFuture((prev) => [...dropped, ...prev]);
-    showToast("Undid action");
-  }
-
-  function undoLast() {
-    const last = actions[actions.length - 1];
-    if (!last) return;
-    undoAction(last.id);
-  }
-
-  function redoLast() {
-    const next = future[0];
-    if (!next) return;
-    restoreSnapshot(next.after, "Redid action");
-    setFuture((prev) => prev.slice(1));
-    setActions((prev) => [...prev, next]);
-    showToast("Redid action");
+  function savePositions(positions: { id: string; x: number; y: number }[], label: string) {
+    for (const p of positions) persistedPositions.current.set(p.id, { x: p.x, y: p.y });
+    persistPositions(positions, label);
   }
 
   function patchSettings(patch: Partial<GraphSettings>) {
     setSettings(mergeViewSettings(settings, patch));
   }
 
-  useEffect(() => {
-    try {
-      applyPhysicsFreeze(settings.physics);
-      if (settings.physics) graphRef.current?.d3ReheatSimulation();
-    } catch {
-      /* engine may be mid-tick */
-    }
-  }, [settings.physics]);
-
   function updateNode(id: string, patch: Partial<GraphNode>) {
-    const current = nodes.find((n) => n.id === id);
-    const name = current?.title.trim() || "node";
+    const current = graphStore.state.nodes.find((n) => n.id === id);
+    if (!current) return;
+    const name = current.title.trim() || "node";
     let label = `Edited ${name}`;
-    let coalesceKey = `node:${id}:edit`;
     if (patch.color && Object.keys(patch).length === 1) {
       label = `Changed status of ${name}`;
     } else if (patch.size !== undefined && Object.keys(patch).length === 1) {
@@ -582,40 +359,37 @@ export default function App() {
     } else if (patch.employee !== undefined && Object.keys(patch).length <= 2) {
       label = `Assigned ${name}`;
     }
-    applyGraph(label, { nodes: nodes.map((n) => (n.id === id ? { ...n, ...patch } : n)) }, coalesceKey);
-    const live = liveGraphNodes().find((n) => n.id === id);
-    if (!live) return;
-    Object.assign(live, patch);
+    commitGraph(
+      label,
+      { nodes: graphStore.state.nodes.map((n) => (n.id === id ? { ...n, ...patch } : n)) },
+      `node:${id}:edit`,
+    );
   }
 
   function updateSelectedNodes(patch: Partial<GraphNode>, label: string) {
     const ids = new Set(selectedIds);
-    applyGraph(
+    commitGraph(
       label,
-      { nodes: nodes.map((n) => (ids.has(n.id) ? { ...n, ...patch } : n)) },
+      { nodes: graphStore.state.nodes.map((n) => (ids.has(n.id) ? { ...n, ...patch } : n)) },
       `selection:${Object.keys(patch).sort().join(",")}`,
     );
-    for (const id of selectedIds) {
-      const live = liveGraphNodes().find((n) => n.id === id);
-      if (live) Object.assign(live, patch);
-    }
+  }
+
+  function openNodeEditor(id: string) {
+    setSelectedIds([id]);
+    setPicked({ kind: "node", id });
+    setEditingId(id);
+    setEditVisual(null);
   }
 
   function addLooseNode(at: { x: number; y: number }) {
+    const { nodes: current, links: currentLinks } = graphStore.state;
     const parentId = placing?.parentId;
-    const parent = parentId
-      ? (liveNode(parentId) ?? nodes.find((n) => n.id === parentId)) ?? null
-      : null;
+    const parent = parentId ? (liveNode(parentId) ?? null) : null;
     if (parent) {
-      const next = addChild(nodes, links, parent, at, placing?.size);
-      const placed = settings.physics
-        ? next.nodes
-        : next.nodes.map((n) => (n.id === next.id ? { ...n, fx: at.x, fy: at.y } : n));
-      applyGraph(`Added node under ${parent.title || "node"}`, { nodes: placed, links: next.links });
-      setSelectedIds([next.id]);
-      setPicked({ kind: "node", id: next.id });
-      setEditingId(next.id);
-      setEditVisual(null);
+      const next = addChild(current, currentLinks, parent, at, placing?.size);
+      commitGraph(`Added node under ${parent.title || "node"}`, { nodes: next.nodes, links: next.links });
+      openNodeEditor(next.id);
       setPlacing(null);
       return;
     }
@@ -626,104 +400,92 @@ export default function App() {
       size: placing?.size,
       x: at.x,
       y: at.y,
-      fx: settings.physics ? undefined : at.x,
-      fy: settings.physics ? undefined : at.y,
     });
-    applyGraph(`Added ${created.title}`, { nodes: [...nodes, created] });
-    setSelectedIds([created.id]);
-    setPicked({ kind: "node", id: created.id });
-    setEditingId(created.id);
-    setEditVisual(null);
+    commitGraph(`Added ${created.title}`, { nodes: [...current, created] });
+    openNodeEditor(created.id);
     setPlacing(null);
   }
 
   function startPlace(parentId?: string, size?: number) {
-    if (editLocked || syncLockedRef.current) return;
-    setConnect(null);
-    setMenu(null);
-    setEditingId(null);
-    setEditingLinkId(null);
-    setPlacing({ parentId, size });
-    if (parentId) {
-      setSelectedIds([parentId]);
-      setPicked({ kind: "node", id: parentId });
-    }
+    if (editLocked) return;
+    guardDraft(() => {
+      setConnect(null);
+      setMenu(null);
+      setEditingId(null);
+      setEditingLinkId(null);
+      setPlacing({ parentId, size });
+      if (parentId) {
+        setSelectedIds([parentId]);
+        setPicked({ kind: "node", id: parentId });
+      }
+    });
   }
 
   function startLink(arrows: ArrowStyle, from?: string) {
-    if (editLocked || syncLockedRef.current) return;
-    setPlacing(null);
-    setMenu(null);
-    setEditingId(null);
-    setEditingLinkId(null);
-    setConnect({ arrows, from });
-    if (from) setSelectedIds([from]);
+    if (editLocked) return;
+    guardDraft(() => {
+      setPlacing(null);
+      setMenu(null);
+      setEditingId(null);
+      setEditingLinkId(null);
+      setConnect({ arrows, from });
+      if (from) setSelectedIds([from]);
+    });
   }
 
   function removeNode(id: string, branch: boolean) {
-    const current = nodes.find((n) => n.id === id);
-    const next = deleteNode(nodes, links, id, branch);
-    applyGraph(
-      branch ? `Deleted branch of ${current?.title || "node"}` : `Deleted ${current?.title || "node"}`,
+    const { nodes: current, links: currentLinks } = graphStore.state;
+    const target = current.find((n) => n.id === id);
+    const next = deleteNode(current, currentLinks, id, branch);
+    commitGraph(
+      branch ? `Deleted branch of ${target?.title || "node"}` : `Deleted ${target?.title || "node"}`,
       { nodes: next.nodes, links: next.links },
     );
-    setSelectedIds((prev) => prev.filter((item) => item !== id));
-    if (editingId === id) setEditingId(null);
-    if (picked?.id === id) setPicked(null);
     setMenu(null);
   }
 
   function removeNodes(ids: string[]) {
-    let nextNodes = nodes;
-    let nextLinks = links;
+    let { nodes: nextNodes, links: nextLinks } = graphStore.state;
     for (const id of ids) {
       const next = deleteNode(nextNodes, nextLinks, id, false);
       nextNodes = next.nodes;
       nextLinks = next.links;
     }
-    applyGraph(`Deleted ${ids.length} nodes`, { nodes: nextNodes, links: nextLinks });
+    commitGraph(`Deleted ${ids.length} nodes`, { nodes: nextNodes, links: nextLinks });
     setSelectedIds([]);
-    setEditingId(null);
     setPicked(null);
     setMenu(null);
   }
 
   function removeLink(id: string) {
-    applyGraph("Deleted connection", { links: links.filter((l) => l.id !== id) });
-    if (editingLinkId === id) setEditingLinkId(null);
-    if (picked?.kind === "link" && picked.id === id) setPicked(null);
+    commitGraph("Deleted connection", { links: graphStore.state.links.filter((l) => l.id !== id) });
     setMenu(null);
   }
 
   function insertNodeOnLink(linkId: string) {
-    const next = insertNodeBetween(nodes, links, linkId);
+    const { nodes: current, links: currentLinks } = graphStore.state;
+    const next = insertNodeBetween(current, currentLinks, linkId);
     if (!next) return;
-    const placed = settings.physics
-      ? next.nodes
-      : next.nodes.map((n) => (n.id === next.id ? { ...n, fx: n.x, fy: n.y } : n));
-    applyGraph("Inserted node on connection", { nodes: placed, links: next.links });
-    setSelectedIds([next.id]);
-    setPicked({ kind: "node", id: next.id });
-    setEditingId(next.id);
-    setEditVisual(null);
+    commitGraph("Inserted node on connection", { nodes: next.nodes, links: next.links });
+    openNodeEditor(next.id);
     setEditingLinkId(null);
     setMenu(null);
     showToast("Inserted node on connection");
   }
 
   function updateLink(id: string, patch: Partial<GraphLink>) {
-    applyGraph(
+    commitGraph(
       "Edited connection",
-      { links: links.map((l) => (l.id === id ? { ...l, ...patch } : l)) },
+      { links: graphStore.state.links.map((l) => (l.id === id ? { ...l, ...patch } : l)) },
       `link:${id}`,
     );
   }
 
   function flipLink(id: string) {
-    applyGraph(
+    commitGraph(
       "Flipped connection",
       {
-        links: links.map((l) => {
+        links: graphStore.state.links.map((l) => {
           if (l.id !== id) return l;
           const e = linkEnds(l);
           return { ...l, source: e.target, target: e.source };
@@ -735,31 +497,38 @@ export default function App() {
 
   function pickNode(id: string, additive = false) {
     if (editLocked) return;
-    setSelectedIds((prev) => {
-      if (additive) return prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id];
-      return [id];
-    });
-    setPicked({ kind: "node", id });
-    setEditingLinkId(null);
-    setMenu(null);
-    setPlusOpen(false);
-    if (additive) {
-      setEditingId(null);
-      setEditVisual(null);
-      return;
-    }
-    if (editingId !== id) setEditVisual(null);
-    setEditingId(id);
+    const leavesEditor = additive || (editingId !== null && editingId !== id);
+    const apply = () => {
+      setSelectedIds((prev) => {
+        if (additive) return prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id];
+        return [id];
+      });
+      setPicked({ kind: "node", id });
+      setEditingLinkId(null);
+      setMenu(null);
+      setPlusOpen(false);
+      if (additive) {
+        setEditingId(null);
+        setEditVisual(null);
+        return;
+      }
+      if (editingId !== id) setEditVisual(null);
+      setEditingId(id);
+    };
+    if (leavesEditor) guardDraft(apply);
+    else apply();
   }
 
   function pickLink(id: string) {
     if (editLocked) return;
-    setSelectedIds([]);
-    setPicked({ kind: "link", id });
-    setEditingId(null);
-    setEditVisual(null);
-    setMenu(null);
-    setPlusOpen(false);
+    guardDraft(() => {
+      setSelectedIds([]);
+      setPicked({ kind: "link", id });
+      setEditingId(null);
+      setEditVisual(null);
+      setMenu(null);
+      setPlusOpen(false);
+    });
   }
 
   function requestLinkEdit(id: string) {
@@ -767,21 +536,54 @@ export default function App() {
     setMenu(null);
     setPlusOpen(false);
     if (editingLinkId === id && editingId === null) return;
-    if (editingId !== null || editingLinkId !== null) {
-      setEditLocked(false);
-      setPendingEdit({ kind: "link", id });
+    guardDraft(() => {
+      if (editingId !== null || editingLinkId !== null) {
+        setEditLocked(false);
+        setPendingEdit({ kind: "link", id });
+        setEditingId(null);
+        setEditingLinkId(null);
+        return;
+      }
+      setSelectedIds([]);
+      setPicked({ kind: "link", id });
       setEditingId(null);
-      setEditingLinkId(null);
-      return;
-    }
-    setSelectedIds([]);
-    setPicked({ kind: "link", id });
-    setEditingId(null);
-    setEditingLinkId(id);
+      setEditingLinkId(id);
+    });
   }
 
-  function liveNode(id: string) {
-    return liveGraphNodes().find((n) => n.id === id) ?? nodes.find((n) => n.id === id);
+  function centerOn(x: number, y: number) {
+    const fg = graphRef.current as (GraphHandle & { centerAt?: (x: number, y: number, ms?: number) => void }) | undefined;
+    fg?.centerAt?.(x, y, 400);
+  }
+
+  function focusNode(id: string) {
+    if (editLocked) return;
+    const live = liveNode(id);
+    if (!live) {
+      showToast("That node no longer exists");
+      return;
+    }
+    guardDraft(() => {
+      setMenu(null);
+      setPlacing(null);
+      setConnect(null);
+      setEditingLinkId(null);
+      openNodeEditor(id);
+      if (live.x != null && live.y != null) centerOn(live.x, live.y);
+    });
+  }
+
+  function focusLink(id: string) {
+    const link = graphStore.state.links.find((l) => l.id === id);
+    if (!link) {
+      showToast("That connection no longer exists");
+      return;
+    }
+    const e = linkEnds(link);
+    const a = liveNode(e.source);
+    const b = liveNode(e.target);
+    pickLink(id);
+    if (a?.x != null && a.y != null && b?.x != null && b.y != null) centerOn((a.x + b.x) / 2, (a.y + b.y) / 2);
   }
 
   const fitGraph = useCallback(() => {
@@ -826,17 +628,7 @@ export default function App() {
 
     fg.centerAt?.(cx, cy, 400);
     window.setTimeout(() => fg.zoom?.(zoomK, 400), 0);
-  }, [
-    nodes,
-    size.w,
-    size.h,
-    hideFiltered,
-    search,
-    settings.colorBy,
-    statusFilters,
-    employeeFilter,
-    showToast,
-  ]);
+  }, [nodes, size.w, size.h, hideFiltered, search, settings.colorBy, statusFilters, employeeFilter]);
 
   useEffect(() => {
     if (!nodes.length || size.w < 200) return;
@@ -846,18 +638,11 @@ export default function App() {
       fittedOnce.current = true;
     }, 120);
     return () => window.clearTimeout(timer);
-  }, [nodes.length, size.w, size.h, fitGraph]);
+  }, [nodes.length, size.w, size.h, fitGraph, hydration]);
 
   function reheat() {
     setSettings(mergeViewSettings(settings, { physics: true }));
-    window.setTimeout(() => {
-      try {
-        applyPhysicsFreeze(true);
-      } catch {
-        /* ignore */
-      }
-      graphRef.current?.d3ReheatSimulation();
-    }, 20);
+    window.setTimeout(() => graphRef.current?.d3ReheatSimulation(), 20);
   }
 
   function screenOf(x: number, y: number) {
@@ -964,8 +749,8 @@ export default function App() {
         onHistory={toggleHistory}
         canUndo={actions.length > 0}
         canRedo={future.length > 0}
-        onUndo={undoLast}
-        onRedo={redoLast}
+        onUndo={undo}
+        onRedo={redo}
         onInfo={toggleInfo}
       />
 
@@ -984,16 +769,13 @@ export default function App() {
               onStatusFilters={setStatusFilters}
               onEmployeeFilter={setEmployeeFilter}
               onSettings={patchSettings}
+              onResetSettings={() => setSettings(DEFAULT_SETTINGS)}
               onFit={fitGraph}
               onReorg={reheat}
               onTogglePhysics={() => {
                 const next = !settings.physics;
-                applyPhysicsFreeze(next);
                 setSettings(mergeViewSettings(settings, { physics: next }));
-                window.setTimeout(() => {
-                  applyPhysicsFreeze(next);
-                  if (next) graphRef.current?.d3ReheatSimulation();
-                }, 40);
+                if (next) window.setTimeout(() => graphRef.current?.d3ReheatSimulation(), 40);
               }}
               onToggleCards={() => setSettings(mergeViewSettings(settings, { cardInfo: !settings.cardInfo }))}
               onNodeSave={(patch) => {
@@ -1049,71 +831,45 @@ export default function App() {
             onSelect={(id, additive) => {
               if (editLocked) return;
               if (id) pickNode(id, additive);
-              else dismissPreview();
+              else guardDraft(dismissPreview);
             }}
-            onMarquee={(ids, additive) => {
+            onMarquee={(ids, mode: LassoMode) => {
               if (editLocked) return;
-              setSelectedIds((prev) => (additive ? Array.from(new Set([...prev, ...ids])) : ids));
-              if (ids.length === 1) {
-                setPicked({ kind: "node", id: ids[0] });
-                setEditingId(ids[0]);
-              } else {
-                setPicked(null);
-                setEditingId(null);
-              }
-              setEditVisual(null);
-              setEditingLinkId(null);
-              setMenu(null);
-            }}
-            onGroupMoveEnd={(positions) => {
-              const live = liveGraphNodes();
-              for (const pos of positions) {
-                const model = nodes.find((n) => n.id === pos.id);
-                const item = live.find((n) => n.id === pos.id);
-                if (model) {
-                  model.x = pos.x;
-                  model.y = pos.y;
-                  if (!settings.physics) {
-                    model.fx = pos.x;
-                    model.fy = pos.y;
-                  }
+              guardDraft(() => {
+                const next =
+                  mode === "add"
+                    ? Array.from(new Set([...selectedIds, ...ids]))
+                    : mode === "subtract"
+                      ? selectedIds.filter((id) => !ids.includes(id))
+                      : ids;
+                setSelectedIds(next);
+                if (next.length === 1) {
+                  setPicked({ kind: "node", id: next[0] });
+                  setEditingId(next[0]);
+                } else {
+                  setPicked(null);
+                  setEditingId(null);
                 }
-                if (item) {
-                  item.x = pos.x;
-                  item.y = pos.y;
-                  if (!settings.physics) {
-                    item.fx = pos.x;
-                    item.fy = pos.y;
-                  } else {
-                    item.fx = undefined;
-                    item.fy = undefined;
-                  }
-                }
-              }
-              const moved: GraphNode[] = [];
-              for (const pos of positions) {
-                const model = nodes.find((n) => n.id === pos.id);
-                if (!model) continue;
-                moved.push({
-                  ...model,
-                  x: pos.x,
-                  y: pos.y,
-                  fx: settings.physics ? undefined : pos.x,
-                  fy: settings.physics ? undefined : pos.y,
-                });
-              }
-              persistPositions(moved);
+                setEditVisual(null);
+                setEditingLinkId(null);
+                setMenu(null);
+              });
             }}
+            onGroupMoveEnd={(positions) => savePositions(positions, `Moved ${positions.length} nodes`)}
             onSelectLink={pickLink}
             onHover={setHoveredId}
             onEditLink={(id) => requestLinkEdit(id)}
             onNodeMenu={(id, x, y) => {
               if (editLocked) return;
-              setSelectedIds((prev) => (prev.includes(id) ? prev : [id]));
-              if (editingId !== id) setEditVisual(null);
-              setEditingId(id);
-              setPicked({ kind: "node", id });
-              openContextMenu({ kind: "node", id, x, y });
+              const open = () => {
+                setSelectedIds((prev) => (prev.includes(id) ? prev : [id]));
+                if (editingId !== id) setEditVisual(null);
+                setEditingId(id);
+                setPicked({ kind: "node", id });
+                openContextMenu({ kind: "node", id, x, y });
+              };
+              if (editingId !== null && editingId !== id) guardDraft(open);
+              else open();
             }}
             onLinkMenu={(id, x, y) => openContextMenu({ kind: "link", id, x, y })}
             onBackgroundMenu={(x, y) => openContextMenu({ kind: "canvas", x, y })}
@@ -1128,44 +884,13 @@ export default function App() {
                 return;
               }
               setMenu(null);
-              if (!editLocked) dismissEditPanel();
-              dismissPreview();
+              guardDraft(() => {
+                dismissEditPanel();
+                dismissPreview();
+              });
             }}
             onPlace={addLooseNode}
-            onDragEnd={(id, x, y) => {
-              const model = nodes.find((n) => n.id === id);
-              const live = liveGraphNodes().find((n) => n.id === id);
-              if (model) {
-                model.x = x;
-                model.y = y;
-                if (!settings.physics) {
-                  model.fx = x;
-                  model.fy = y;
-                }
-              }
-              if (live) {
-                live.x = x;
-                live.y = y;
-                if (!settings.physics) {
-                  live.fx = x;
-                  live.fy = y;
-                } else {
-                  live.fx = undefined;
-                  live.fy = undefined;
-                }
-              }
-              if (model) {
-                persistPositions([
-                  {
-                    ...model,
-                    x,
-                    y,
-                    fx: settings.physics ? undefined : x,
-                    fy: settings.physics ? undefined : y,
-                  },
-                ]);
-              }
-            }}
+            onDragEnd={(id, x, y) => savePositions([{ id, x, y }], "Moved node")}
             onConnectTarget={(id) => {
               if (!connect) return;
               const from = connect.from;
@@ -1174,23 +899,20 @@ export default function App() {
                 setSelectedIds([id]);
                 return;
               }
-              applyGraph("Linked nodes", { links: addLink(links, from, id, "cross", connect.arrows) });
+              commitGraph("Linked nodes", { links: addLink(graphStore.state.links, from, id, "cross", connect.arrows) });
               setConnect(null);
               showToast("Linked");
             }}
             onZoom={setZoom}
             onSettle={() => {
-              const live = liveGraphNodes();
-              for (const n of nodes) {
-                const match = live.find((item) => item.id === n.id);
-                if (match) {
-                  n.x = match.x;
-                  n.y = match.y;
-                }
-              }
-              const doc = { nodes, links, settings };
-              saveDocument(doc);
-              persistPositions(nodes);
+              const moved = liveGraphNodes().flatMap((n) => {
+                if (n.x == null || n.y == null) return [];
+                const prev = persistedPositions.current.get(n.id);
+                if (prev && Math.abs(prev.x - n.x) < POSITION_EPSILON && Math.abs(prev.y - n.y) < POSITION_EPSILON) return [];
+                return [{ id: n.id, x: n.x, y: n.y }];
+              });
+              saveDocument({ nodes: graphStore.state.nodes, links: graphStore.state.links, settings });
+              if (moved.length && graphStore.state.hydrated) savePositions(moved, "Updated positions");
               if (!fittedOnce.current) {
                 fittedOnce.current = true;
                 fitGraph();
@@ -1201,19 +923,6 @@ export default function App() {
 
         <ViewCompass degrees={viewRotation} onChange={setViewRotation} onHoldChange={setViewSpinning} />
 
-        {syncLocked && (
-          <div
-            className="absolute inset-0 z-[30] flex items-center justify-center bg-[rgba(18,20,24,0.58)] backdrop-grayscale"
-            role="status"
-            aria-live="polite"
-            aria-label="Syncing map"
-          >
-            <div className="rounded-full border border-[var(--line)] bg-[var(--card)] px-3 py-1.5 text-xs font-semibold text-[var(--text)] shadow-[var(--shadow)]">
-              Syncing map…
-            </div>
-          </div>
-        )}
-
         {(placing || connect || selectedIds.length > 1) && (
           <div className="absolute top-3 left-1/2 z-[8] -translate-x-1/2 rounded-full bg-[rgba(27,58,107,0.92)] px-3 py-1.5 text-xs font-bold tracking-wide text-[#f3f2f1]">
             {placing
@@ -1222,7 +931,7 @@ export default function App() {
                 ? "Click the next node · Esc to cancel"
                 : connect
                   ? "Click the first node · Esc to cancel"
-                  : "Drag the box or a selected node to move · Esc to clear"}
+                  : `${selectedIds.length} selected · Drag a selected node to move · − removes one · Esc to clear`}
           </div>
         )}
 
@@ -1248,7 +957,7 @@ export default function App() {
       )}
 
       {menu?.kind === "node" && (() => {
-        const ctxNode = nodes.find((n) => n.id === menu.id);
+        const ctxNode = nodeById.get(menu.id);
         if (!ctxNode) return null;
         return (
           <NodeContextMenu
@@ -1336,16 +1045,36 @@ export default function App() {
         />
       )}
 
-      <SyncChangesModal changes={syncChanges} onClose={() => setSyncChanges([])} />
+      <SyncChangesFeed onJumpNode={focusNode} onJumpLink={focusLink} />
 
       <HistoryPanel
         open={historyOpen}
         history={actions}
-        onUndo={undoAction}
+        onUndo={(id) => {
+          if (undoTo(id)) showToast("Undid action");
+        }}
         onClose={() => patchUi({ historyOpen: false })}
       />
 
       <InfoPanel open={infoOpen} onClose={() => patchUi({ infoOpen: false })} />
+
+      {draftPrompt && (
+        <DraftPrompt
+          onSave={() => {
+            saveDrafts();
+            const { proceed } = draftPrompt;
+            setDraftPrompt(null);
+            proceed();
+          }}
+          onDiscard={() => {
+            discardDrafts();
+            const { proceed } = draftPrompt;
+            setDraftPrompt(null);
+            proceed();
+          }}
+          onCancel={() => setDraftPrompt(null)}
+        />
+      )}
 
       {toast && <div className="fixed bottom-[18px] left-1/2 z-[80] -translate-x-1/2 rounded-lg bg-[#1b1b1b] px-3 py-2 text-xs text-white dark:bg-[#f3f2f1] dark:text-[#1b1b1b]">{toast}</div>}
       <input
@@ -1359,13 +1088,9 @@ export default function App() {
           if (!file) return;
           try {
             const doc = await readJsonFile(file);
-            setNodes(doc.nodes);
-            setLinks(doc.links);
-            setSettings(mergeViewSettings(doc.settings, doc.settings));
-            setActions([]);
-            setFuture([]);
+            replaceGraph(doc, "Imported graph");
+            setSettings(mergeViewSettings(settings, doc.settings));
             fittedOnce.current = false;
-            persistTx({ label: "Imported graph", replace: doc }, { expect: doc });
             showToast("Imported graph");
           } catch {
             showToast("Could not import that file");

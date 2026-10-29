@@ -37,7 +37,23 @@ export function mergeViewSettings(base: GraphSettings, view?: Partial<GraphSetti
   return graphSettingsSchema.parse(next);
 }
 
+export function sharedSettingsOnly(settings?: Partial<GraphSettings> | null): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (!settings) return out;
+  for (const [key, value] of Object.entries(settings)) {
+    if (VIEW_SETTING_KEYS.includes(key as ViewSettingKey) || value === undefined) continue;
+    out[key] = value;
+  }
+  return out;
+}
+
+export function hasSharedSettings(settings?: Partial<GraphSettings> | null) {
+  return Object.keys(sharedSettingsOnly(settings)).length > 0;
+}
+
 export function sharedSettingsChanged(before: GraphSettings, after: GraphSettings) {
-  const beforeKeys = Object.keys(before) as (keyof GraphSettings)[];
-  return beforeKeys.some((key) => !VIEW_SETTING_KEYS.includes(key as ViewSettingKey) && before[key] !== after[key]);
+  const beforeShared = sharedSettingsOnly(before);
+  const afterShared = sharedSettingsOnly(after);
+  const keys = new Set([...Object.keys(beforeShared), ...Object.keys(afterShared)]);
+  return [...keys].some((key) => beforeShared[key] !== afterShared[key]);
 }

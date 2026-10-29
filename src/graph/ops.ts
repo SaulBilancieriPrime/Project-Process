@@ -19,8 +19,6 @@ export function blankNode(partial: Partial<GraphNode> & { title?: string }): Gra
     size: partial.size ?? sizeForLevel(level),
     x: partial.x,
     y: partial.y,
-    fx: partial.fx,
-    fy: partial.fy,
   });
 }
 
@@ -46,7 +44,7 @@ export function addChild(
   });
   return {
     nodes: [...nodes, child],
-    links: [...links, graphLinkSchema.parse({ id: newId(), source: parent.id, target: child.id, kind: "parent", arrows: "none" })],
+    links: [...links, graphLinkSchema.parse({ id: newId(), source: parent.id, target: child.id, kind: "parent", arrows: "one" })],
     id: child.id,
   };
 }

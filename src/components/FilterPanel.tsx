@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   WORKFLOW_STATUS_META,
   personAssignmentStats,
@@ -26,6 +26,7 @@ type Props = {
   onReorg: () => void;
   onTogglePhysics: () => void;
   onToggleCards: () => void;
+  onResetSettings: () => void;
 };
 
 function toggleStatus(list: WorkflowStatus[], status: WorkflowStatus) {
@@ -78,8 +79,10 @@ export default function FilterPanel({
   onReorg,
   onTogglePhysics,
   onToggleCards,
+  onResetSettings,
 }: Props) {
   const stats = useMemo(() => workflowStats(nodes, colorBy), [nodes, colorBy]);
+  const [advanced, setAdvanced] = useState(false);
 
   return (
     <div className="filter-panel space-y-2.5 pt-0.5">
@@ -238,7 +241,28 @@ export default function FilterPanel({
           value={settings.cardScale ?? settings.enlarge ?? 1}
           onChange={(cardScale) => onSettings({ cardScale })}
         />
-        {settings.physics ? (
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <button
+            type="button"
+            className="cursor-pointer border-0 bg-transparent p-0 text-[10px] font-semibold tracking-wide text-[var(--muted)] uppercase hover:text-[var(--text)]"
+            aria-expanded={advanced}
+            onClick={() => setAdvanced((open) => !open)}
+          >
+            {advanced ? "▾" : "▸"} Advanced
+          </button>
+          <button
+            type="button"
+            className="cursor-pointer border-0 bg-transparent p-0 text-[10px] text-[var(--muted)] underline-offset-2 hover:text-[var(--text)] hover:underline"
+            title="Reset view settings on this device to their defaults"
+            onClick={onResetSettings}
+          >
+            Reset view prefs
+          </button>
+        </div>
+        {advanced && !settings.physics ? (
+          <p className="mt-1 mb-0 text-[10px] text-[var(--muted)]">Turn on Physics to tune forces.</p>
+        ) : null}
+        {advanced && settings.physics ? (
           <div className="mt-1.5">
             <p className="mb-1 text-[10px] font-semibold tracking-wide text-[var(--muted)] uppercase">Forces</p>
             <label className="my-1 flex items-center justify-between gap-2 text-[11px] text-[var(--muted)]">

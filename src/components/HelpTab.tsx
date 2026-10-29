@@ -160,7 +160,7 @@ function MouseGuide() {
       <div className="grid min-w-0 flex-1 grid-cols-2 gap-2">
         <div>
           <p className="m-0 text-[11px] font-semibold text-[var(--text)]">Left click</p>
-          <p className="m-0 text-[10px] leading-snug text-[var(--muted)]">Select, edit, and box-select</p>
+          <p className="m-0 text-[10px] leading-snug text-[var(--muted)]">Select, edit, and lasso-select</p>
         </div>
         <div>
           <p className="m-0 text-[11px] font-semibold text-[var(--text)]">Right click</p>
@@ -177,7 +177,8 @@ export default function HelpTab() {
       <div className="rounded-[10px] border border-[var(--line)] bg-[color-mix(in_srgb,var(--accent)_10%,var(--input))] px-3 py-2.5">
         <p className="m-0 text-[12px] font-semibold text-[var(--text)]">Shared live map</p>
         <p className="mt-1 mb-0 text-[11px] leading-snug text-[var(--muted)]">
-          Edits write to Azure SQL as you go. There is no Save — the whole team sees status, people, and structure live.
+          Edits apply instantly and save to Azure SQL in the background. If someone else changed the same item first, your change is
+          not saved, the latest map reloads, and the bell explains what happened.
         </p>
       </div>
 
@@ -191,8 +192,12 @@ export default function HelpTab() {
         <div className="grid grid-cols-2 gap-1.5">
           <Card icon={<IcoZoom />} title="Zoom" body="Scroll on the canvas." />
           <Card icon={<IcoPan />} title="Pan" body={<>Hold <Key>Space</Key> or <Key>Alt</Key> and drag.</>} />
-          <Card icon={<IcoCompass />} title="Rotate" body="Hold the top-right compass to enlarge it, then drag around to spin your view. Release to keep that angle — it stays on this device only." />
-          <Card icon={<IcoSelect />} title="Box select" body="Drag empty space. Shift adds to the selection." />
+          <Card icon={<IcoCompass />} title="Rotate" body="Hold the top-right compass and drag to spin your view. Double-click it to snap back upright. The angle stays on this device only." />
+          <Card
+            icon={<IcoSelect />}
+            title="Lasso select"
+            body={<>Draw on empty space; the path closes with a straight line until it crosses itself. A live count shows what you'll catch. <Key>Shift</Key> adds, <Key>Ctrl/Cmd</Key> removes. Click a node's red − badge to drop just that node.</>}
+          />
         </div>
       </section>
 
@@ -200,8 +205,9 @@ export default function HelpTab() {
         <h3 className={cx(sideH2, "mb-1.5")}>Build the map</h3>
         <div className="grid grid-cols-2 gap-1.5">
           <Card icon={<IcoAdd />} title="Add a node" body={<>Hover or click <Key>+</Key>, or press <Key>N</Key>.</>} />
-          <Card icon={<IcoLink />} title="Add a link" body="From + or a node menu, pick an arrow type, then click two nodes." />
-          <Card icon={<IcoEdit />} title="Edit a node" body="Click a ball — the left panel opens. Tint follows status." />
+          <Card icon={<IcoLink />} title="Add a link" body="From + or a node menu, pick an arrow type, then single-click two nodes anywhere on the ball. The target ring highlights as you hover." />
+          <Card icon={<IcoEdit />} title="Edit a node" body="Click a ball — the left panel opens. Status, person, and size save instantly; Title and Description save with Enter / Ctrl+Enter or the check button." />
+          <Card icon={<IcoAdd />} title="Child nodes" body="Adding from a node's menu links the new node with a one-way arrow from the original." />
           <Card icon={<IcoLink />} title="Edit a link" body="Right-click a connection to flip, change arrows, insert, or delete." />
         </div>
       </section>
@@ -211,15 +217,16 @@ export default function HelpTab() {
         <div className="grid grid-cols-2 gap-1.5">
           <Card icon={<IcoFilter />} title="Search & filter" body="Search titles, or tap status pills and people in the left rail." />
           <Card icon={<IcoStatus />} title="Status" body="Incomplete, in progress, and done — shown as the ring on each ball." />
-          <Card icon={<IcoPeople />} title="Assign people" body="Pick a person on a node. Their photo sits on the ball." />
-          <Card icon={<IcoView />} title="View" body="Fit, Reorg, Physics, Text, Cards, and Pulse live under View. Those look and force choices stay on this device — they do not go into History or the shared map." />
+          <Card icon={<IcoPeople />} title="Assign people" body="Search by name or email on a node. Their photo sits on the ball." />
+          <Card icon={<IcoView />} title="View" body="Fit, Reorg, Physics, Text, Cards, and Pulse live under View; force sliders are under Advanced. These stay on this device — Reset view prefs restores defaults." />
         </div>
       </section>
 
       <section>
         <h3 className={cx(sideH2, "mb-1.5")}>Together</h3>
         <div className="grid grid-cols-2 gap-1.5">
-          <Card icon={<IcoLive />} title="Live writes" body="Every node, link, status, and assignee change commits immediately." />
+          <Card icon={<IcoLive />} title="Sync updates" body="The bell (bottom right) lists other people's changes. Filter them, mark them read, or click Show to jump to a node." />
+          <Card icon={<IcoLive />} title="Offline queue" body="If saving fails, unsaved changes queue above the bell and retry automatically. Use Retry now or Discard if it stays stuck." />
           <Card icon={<IcoHistory />} title="Undo" body={<>Header arrows, or <Key>Ctrl/Cmd+Z</Key> / <Key>Y</Key>. History is local; writes still sync.</>} />
         </div>
       </section>
@@ -238,6 +245,18 @@ export default function HelpTab() {
           <p className="m-0 flex items-center justify-between gap-2 text-[11px] text-[var(--muted)]">
             <span>Add node</span>
             <Key>N</Key>
+          </p>
+          <p className="m-0 flex items-center justify-between gap-2 text-[11px] text-[var(--muted)]">
+            <span>Save text edits</span>
+            <span className="flex gap-1">
+              <Key>Enter</Key>
+              <Key>Ctrl/Cmd+Enter</Key>
+              <Key>Ctrl/Cmd+S</Key>
+            </span>
+          </p>
+          <p className="m-0 flex items-center justify-between gap-2 text-[11px] text-[var(--muted)]">
+            <span>Reset a text edit</span>
+            <Key>Esc</Key>
           </p>
           <p className="m-0 flex items-center justify-between gap-2 text-[11px] text-[var(--muted)]">
             <span>Undo / redo</span>

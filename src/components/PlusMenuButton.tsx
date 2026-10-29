@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { ArrowStyle } from "../types";
-import { cx, toolBtn, toolBtnOn } from "../styles";
+import { cx } from "../styles";
 import PlusMenu from "./PlusMenu";
 
 type Props = {
@@ -11,8 +11,32 @@ type Props = {
   onLink: (arrows: ArrowStyle) => void;
 };
 
+const HOVER_CLOSE_MS = 120;
+
 export default function PlusMenuButton({ open, armed, onOpen, onAddNode, onLink }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
+  const hoverCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function clearHoverClose() {
+    if (hoverCloseTimer.current) {
+      clearTimeout(hoverCloseTimer.current);
+      hoverCloseTimer.current = null;
+    }
+  }
+
+  function hoverOpen() {
+    clearHoverClose();
+    onOpen(true);
+  }
+
+  function hoverClose() {
+    clearHoverClose();
+    hoverCloseTimer.current = setTimeout(() => onOpen(false), HOVER_CLOSE_MS);
+  }
+
+  useEffect(() => {
+    return () => clearHoverClose();
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -36,14 +60,16 @@ export default function PlusMenuButton({ open, armed, onOpen, onAddNode, onLink 
     <div
       className="plus-wrap relative z-[9] shrink-0"
       ref={wrapRef}
-      onMouseEnter={() => onOpen(true)}
-      onMouseLeave={() => onOpen(false)}
+      onMouseEnter={hoverOpen}
+      onMouseLeave={hoverClose}
     >
       <button
         type="button"
         className={cx(
-          open || armed ? toolBtnOn : toolBtn,
-          "h-9 w-9 rounded-[10px] p-0 text-[22px] leading-none font-medium",
+          "flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border pb-1 text-[22px] leading-none font-medium transition-[filter] hover:brightness-110",
+          open || armed
+            ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--input)]"
+            : "border-[var(--line)] bg-[var(--text)] text-[var(--input)]",
         )}
         aria-label="Add"
         aria-expanded={open}
@@ -51,15 +77,21 @@ export default function PlusMenuButton({ open, armed, onOpen, onAddNode, onLink 
         onClick={openMenu}
         onContextMenu={openMenu}
       >
-        +
+        <span>+</span>
       </button>
       {open && (
-        <div className="plus-menu absolute top-[calc(100%+6px)] left-0 z-40 w-[196px] rounded-lg border border-[var(--line)] bg-[var(--card)] p-1 shadow-[var(--shadow)]">
-          <PlusMenu
-            onAddNode={onAddNode}
-            onLink={onLink}
-            onClose={() => onOpen(false)}
-          />
+        <div
+          className="absolute top-full left-0 z-40 w-[196px] pt-1.5"
+          onMouseEnter={hoverOpen}
+          onMouseLeave={hoverClose}
+        >
+          <div className="plus-menu rounded-lg border border-[var(--line)] bg-[var(--card)] p-1 shadow-[var(--shadow)]">
+            <PlusMenu
+              onAddNode={onAddNode}
+              onLink={onLink}
+              onClose={() => onOpen(false)}
+            />
+          </div>
         </div>
       )}
     </div>

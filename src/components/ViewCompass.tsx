@@ -42,9 +42,15 @@ export default function ViewCompass({ degrees, onChange, onHoldChange }: Props) 
       className={`view-compass pointer-events-auto absolute top-3 right-3 origin-top-right cursor-grab rounded-full border-0 bg-transparent p-0 select-none active:cursor-grabbing ${
         holding ? "z-[40] size-28" : "z-[12] size-10"
       }`}
-      title="Hold and drag to spin your view. Release to keep that angle."
+      title="Hold and drag to spin your view. Double-click to reset upright."
       aria-label="Rotate view"
       aria-pressed={holding}
+      onDoubleClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        endHold();
+        onChange(0);
+      }}
       onPointerDown={(e) => {
         if (e.button !== 0) return;
         e.preventDefault();

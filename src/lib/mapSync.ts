@@ -1,25 +1,60 @@
-import { sharedSettingsChanged } from "../graph/viewSettings";
-import { parseGraphDocument, type GraphDocument, type GraphLink, type GraphNode, type GraphSettings } from "../schema/graph";
+import {
+  graphLinkSchema,
+  graphNodeSchema,
+  type GraphDocument,
+  type GraphLink,
+  type GraphNode,
+} from "../schema/graph";
 
-export type SharedMap = GraphDocument & { revision: number };
+export type VersionMap = Record<string, number>;
+export type EntityVersions = { nodes: VersionMap; links: VersionMap };
+export type NodePosition = { id: string; x: number; y: number };
 
 export type MapTx = {
-  actor?: string;
   label?: string;
-  settings?: GraphSettings;
   upsertNodes?: GraphNode[];
   deleteNodeIds?: string[];
   upsertLinks?: GraphLink[];
   deleteLinkIds?: string[];
+  positions?: NodePosition[];
+  baseVersions?: EntityVersions;
   replace?: GraphDocument;
 };
 
-export type MapPoll =
-  | { ok: true; unchanged: true; revision: number }
-  | { ok: true; unchanged: false; revision: number; nodes: GraphNode[]; links: GraphLink[]; settings: GraphSettings }
-  | { ok: false; error: string };
+export type ChangeLogEntry = { revision: number; by: string; label: string; at: string; client: string | null };
+
+export type RemoteRow<T> = { item: T; version: number; deleted: boolean; client: string | null };
+
+export type FullMap = {
+  kind: "full";
+  revision: number;
+  you: string | null;
+  nodes: GraphNode[];
+  links: GraphLink[];
+  versions: EntityVersions;
+};
+
+export type MapDelta = {
+  kind: "delta";
+  revision: number;
+  you: string | null;
+  nodes: RemoteRow<GraphNode>[];
+  links: RemoteRow<GraphLink>[];
+  log: ChangeLogEntry[];
+};
+
+export type MapFetch = FullMap | MapDelta;
+
+export type TxResult =
+  | { ok: true; revision: number; versions: EntityVersions }
+  | { ok: false; kind: "conflict"; error: string; nodeIds: string[]; linkIds: string[] }
+  | { ok: false; kind: "rejected"; error: string; status: number }
+  | { ok: false; kind: "retryable"; error: string; status: number };
+
+export class MapFetchError extends Error {}
 
 const ACTOR_KEY = "project-process.actor";
+let clientIdCache: string | null = null;
 
 export function mapActor() {
   try {
@@ -33,73 +68,112 @@ export function mapActor() {
   }
 }
 
-export async function fetchSharedMap(since?: number): Promise<MapPoll> {
-  try {
-    const query = since && since > 0 ? `?since=${since}` : "";
-    const res = await fetch(`/api/map${query}`);
-    const body = (await res.json().catch(() => null)) as MapPoll | null;
-    if (!body || typeof body !== "object") return { ok: false, error: `Map request failed (${res.status})` };
-    if (!body.ok) return { ok: false, error: "error" in body ? body.error : `Map request failed (${res.status})` };
-    if (body.unchanged) return body;
-    const doc = parseGraphDocument(body);
-    return { ok: true, unchanged: false, revision: Number(body.revision) || 1, ...doc };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Map request failed" };
-  }
+/** Identifies this browser tab so its own writes can be recognised in deltas. */
+export function mapClientId() {
+  clientIdCache ??= crypto.randomUUID();
+  return clientIdCache;
 }
 
-export async function postMapTx(tx: MapTx): Promise<{ ok: true; revision: number } | { ok: false; error: string }> {
-  try {
-    const res = await fetch("/api/map", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...tx, actor: tx.actor ?? mapActor() }),
+type RawRow = Record<string, unknown>;
+
+function parseNode(raw: RawRow) {
+  const parsed = graphNodeSchema.safeParse(raw);
+  return parsed.success ? { ...parsed.data, fx: undefined, fy: undefined } : null;
+}
+
+function parseLink(raw: RawRow) {
+  const parsed = graphLinkSchema.safeParse(raw);
+  return parsed.success ? parsed.data : null;
+}
+
+function rows(value: unknown): RawRow[] {
+  return Array.isArray(value) ? (value as RawRow[]) : [];
+}
+
+export async function fetchMap(since?: number): Promise<MapFetch> {
+  const query = since && since > 0 ? `?since=${since}` : "";
+  const res = await fetch(`/api/map${query}`);
+  const body = (await res.json().catch(() => null)) as RawRow | null;
+  if (!res.ok || !body?.ok) {
+    throw new MapFetchError(typeof body?.error === "string" ? body.error : `Map request failed (${res.status})`);
+  }
+  const revision = Number(body.revision) || 0;
+  const you = typeof body.you === "string" ? body.you : null;
+  if (body.full) {
+    const versions: EntityVersions = { nodes: {}, links: {} };
+    const nodes = rows(body.nodes).flatMap((raw) => {
+      const node = parseNode(raw);
+      if (!node) return [];
+      versions.nodes[node.id] = Number(raw.version) || 1;
+      return [node];
     });
-    const body = (await res.json().catch(() => null)) as { ok?: boolean; revision?: number; error?: string } | null;
-    if (!res.ok || !body?.ok) {
-      return { ok: false, error: body?.error || `Map write failed (${res.status})` };
-    }
-    return { ok: true, revision: Number(body.revision) || 0 };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Map write failed" };
+    const links = rows(body.links).flatMap((raw) => {
+      const link = parseLink(raw);
+      if (!link) return [];
+      versions.links[link.id] = Number(raw.version) || 1;
+      return [link];
+    });
+    return { kind: "full", revision, you, nodes, links, versions };
   }
-}
-
-export function txFromSnapshots(
-  before: GraphDocument,
-  after: GraphDocument,
-  label: string,
-): MapTx | null {
-  const beforeNodes = new Map(before.nodes.map((n) => [n.id, n]));
-  const afterNodes = new Map(after.nodes.map((n) => [n.id, n]));
-  const beforeLinks = new Map(before.links.map((l) => [l.id, l]));
-  const afterLinks = new Map(after.links.map((l) => [l.id, l]));
-
-  const upsertNodes = after.nodes.filter((node) => {
-    const prev = beforeNodes.get(node.id);
-    return !prev || JSON.stringify(stripVel(prev)) !== JSON.stringify(stripVel(node));
-  });
-  const deleteNodeIds = before.nodes.filter((n) => !afterNodes.has(n.id)).map((n) => n.id);
-  const upsertLinks = after.links.filter((link) => {
-    const prev = beforeLinks.get(link.id);
-    return !prev || JSON.stringify(prev) !== JSON.stringify(link);
-  });
-  const deleteLinkIds = before.links.filter((l) => !afterLinks.has(l.id)).map((l) => l.id);
-  const settingsChanged = sharedSettingsChanged(before.settings, after.settings);
-
-  if (!upsertNodes.length && !deleteNodeIds.length && !upsertLinks.length && !deleteLinkIds.length && !settingsChanged) {
-    return null;
-  }
+  const remote = <T>(raw: RawRow, item: T | null): RemoteRow<T>[] =>
+    item
+      ? [
+          {
+            item,
+            version: Number(raw.version) || 1,
+            deleted: Boolean(raw.deleted),
+            client: typeof raw.client === "string" ? raw.client : null,
+          },
+        ]
+      : [];
   return {
-    label,
-    settings: settingsChanged ? after.settings : undefined,
-    upsertNodes,
-    deleteNodeIds,
-    upsertLinks,
-    deleteLinkIds,
+    kind: "delta",
+    revision,
+    you,
+    nodes: rows(body.nodes).flatMap((raw) => remote(raw, parseNode(raw))),
+    links: rows(body.links).flatMap((raw) => remote(raw, parseLink(raw))),
+    log: rows(body.log).map((raw) => ({
+      revision: Number(raw.revision) || 0,
+      by: String(raw.by ?? ""),
+      label: String(raw.label ?? ""),
+      at: String(raw.at ?? ""),
+      client: typeof raw.client === "string" ? raw.client : null,
+    })),
   };
 }
 
-function stripVel(node: GraphNode) {
-  return { ...node, vx: undefined, vy: undefined };
+export async function postMapTx(tx: MapTx): Promise<TxResult> {
+  let res: Response;
+  try {
+    const { replace, ...rest } = tx;
+    res = await fetch("/api/map", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...rest,
+        actor: mapActor(),
+        clientId: mapClientId(),
+        replace: replace ? { nodes: replace.nodes, links: replace.links, settings: {} } : undefined,
+      }),
+    });
+  } catch (err) {
+    return { ok: false, kind: "retryable", status: 0, error: err instanceof Error ? err.message : "Network error" };
+  }
+  const body = (await res.json().catch(() => null)) as RawRow | null;
+  const error = typeof body?.error === "string" ? body.error : `Map write failed (${res.status})`;
+  if (res.ok && body?.ok) {
+    const versions = (body.versions as EntityVersions | undefined) ?? { nodes: {}, links: {} };
+    return { ok: true, revision: Number(body.revision) || 0, versions };
+  }
+  if (res.status === 409 && body?.conflict) {
+    return {
+      ok: false,
+      kind: "conflict",
+      error,
+      nodeIds: Array.isArray(body.nodeIds) ? body.nodeIds.map(String) : [],
+      linkIds: Array.isArray(body.linkIds) ? body.linkIds.map(String) : [],
+    };
+  }
+  if (res.status === 400 || res.status === 413) return { ok: false, kind: "rejected", status: res.status, error };
+  return { ok: false, kind: "retryable", status: res.status, error };
 }

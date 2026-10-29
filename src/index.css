@@ -86,6 +86,8 @@ html[data-theme="dark"] {
 .graph-host.is-grab canvas { cursor: grabbing !important; }
 .graph-host.is-pan,
 .graph-host.is-pan canvas { cursor: grab !important; }
+.graph-host.is-badge,
+.graph-host.is-badge canvas { cursor: pointer !important; }
 
 .theme-slider::after {
   content: "";

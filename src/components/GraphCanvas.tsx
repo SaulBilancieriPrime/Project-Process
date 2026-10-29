@@ -6,6 +6,7 @@ import { personStyle } from "../data/personStyle";
 import { NODE_FILL, graphTheme, nodeColor, sizeForLevel, withAlpha } from "../graph/colors";
 import { employeeInitials } from "../graph/employee";
 import { findOriginId, hopDistances, hopGlow, pulseAmountOnLink, pulseFront, pulseHalo, pulseStroke } from "../graph/pulse";
+import { findSelfIntersection, lassoRegion, pointInPolygon, type Point } from "../graph/lasso";
 import { rotatePoint, viewCoverOffset } from "../graph/viewRotation";
 import { isFiltered, linkEnds } from "../graph/visibility";
 import { STATUS_COLORS, type WorkflowStatus } from "../graph/workflowStatus";
@@ -13,6 +14,9 @@ import { loadPersonPhoto } from "../lib/personPhoto";
 import type { ArrowStyle, GraphLink, GraphNode, GraphSettings } from "../types";
 
 export type GraphHandle = ForceGraphMethods<GraphNode, GraphLink>;
+
+/** Shift adds to the selection, Ctrl/⌘ subtracts from it, otherwise the lasso replaces it. */
+export type LassoMode = "replace" | "add" | "subtract";
 
 type Props = {
   nodes: GraphNode[];
@@ -37,7 +41,7 @@ type Props = {
   width: number;
   height: number;
   onSelect: (id: string | null, additive?: boolean) => void;
-  onMarquee: (ids: string[], additive: boolean) => void;
+  onMarquee: (ids: string[], mode: LassoMode) => void;
   onGroupMoveEnd: (positions: { id: string; x: number; y: number }[]) => void;
   onSelectLink: (id: string) => void;
   onHover: (id: string | null) => void;
@@ -77,6 +81,17 @@ function dotRadius(node: GraphNode, globalScale: number, enlarge: number) {
   const base = (2.7 + node.size * 2 + Math.max(0, 2.1 - node.level * 0.32)) * enlarge;
   const screen = Math.min(base * globalScale, 6.5 + node.size * 4.5 * enlarge);
   return screen / globalScale;
+}
+
+/** Hit target in graph space: disc + halo/ring paint + screen slack. */
+function nodePickRadius(node: GraphNode, globalScale: number, enlarge: number, extraScreenPx = 14) {
+  const k = Math.max(globalScale, 1e-4);
+  return dotRadius(node, globalScale, enlarge) + (3.2 + 2.2 + extraScreenPx) / k;
+}
+
+/** Screen-px radius of the "−" deselect badge; tracks the node's on-screen size so it never hides small nodes. */
+function deselectBadgePx(node: GraphNode, globalScale: number, enlarge: number) {
+  return Math.min(7, Math.max(4.5, dotRadius(node, globalScale, enlarge) * globalScale * 0.75));
 }
 
 function cardBox(node: GraphNode, globalScale: number, enlarge: number) {
@@ -306,21 +321,24 @@ export default function GraphCanvas({
   const labelCanvasRef = useRef<HTMLCanvasElement>(null);
   const spaceHeld = useRef(false);
   const skipBg = useRef(false);
+  const armedClickHandled = useRef(false);
   const fgContextHandled = useRef(false);
   const interaction = useRef<
-    | { type: "marquee"; x0: number; y0: number; x1: number; y1: number; additive: boolean; sx0: number; sy0: number }
+    | { type: "marquee"; points: Point[]; mode: LassoMode; sx0: number; sy0: number }
     | { type: "group"; lastX: number; lastY: number }
     | { type: "pan"; sx: number; sy: number; cx: number; cy: number }
     | { type: "drag"; ids: string[]; lastX: number; lastY: number; sx: number; sy: number; moved: boolean }
     | null
   >(null);
   const [gesture, setGesture] = useState<"marquee" | "group" | "pan" | "drag" | null>(null);
+  const [overBadge, setOverBadge] = useState(false);
   const rotationRef = useRef(rotation);
   rotationRef.current = rotation;
   useEffect(() => {
     graphRef.current?.resumeAnimation?.();
   }, [graphRef, rotation, uprightText]);
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
   const palette = graphTheme(theme);
 
   const filterOptions = useMemo(
@@ -583,11 +601,12 @@ export default function GraphCanvas({
     const nodeScale = viewScale(settings.enlarge);
     const cardScale = viewScale(settings.cardScale, nodeScale);
     const cards = cardsAtZoom(Boolean(settings.cardInfo), k);
+    const pickSlack = connectArmed || placeArmed ? 20 : 14;
     let best: GraphNode | null = null;
     let bestD = Infinity;
     for (const n of liveEngineNodes()) {
       if (n.x == null || n.y == null) continue;
-      const r = dotRadius(n, k, nodeScale) + (10 + extraPad) / k;
+      const r = nodePickRadius(n, k, nodeScale, pickSlack + extraPad);
       const d = Math.hypot(n.x - g.x, n.y - g.y);
       if (d <= r && d < bestD) {
         best = n;
@@ -701,6 +720,54 @@ export default function GraphCanvas({
     }
   }
 
+  /** Drops the temporary engine hold placed on nodes while they were being dragged. */
+  function releaseHeld(ids: Set<string>) {
+    for (const n of liveEngineNodes()) {
+      if (!ids.has(n.id)) continue;
+      n.fx = undefined;
+      n.fy = undefined;
+    }
+  }
+
+  function showDeselectBadges() {
+    return selectedSet.size > 1 && !placeArmed && !connectArmed;
+  }
+
+  /** Graph-space center of the "−" badge at a selected node's upper right, kept upright when the view is rotated. */
+  function deselectBadgeCenter(n: GraphNode, k: number) {
+    const enlarge = viewScale(settings.enlarge);
+    const reach = ((dotRadius(n, k, enlarge) * k + deselectBadgePx(n, k, enlarge) * 0.4) * Math.SQRT1_2) / k;
+    const a = labelUnrotate();
+    const cos = Math.cos(a);
+    const sin = Math.sin(a);
+    return { x: (n.x ?? 0) + reach * cos + reach * sin, y: (n.y ?? 0) + reach * sin - reach * cos };
+  }
+
+  function deselectBadgeAt(clientX: number, clientY: number) {
+    if (!showDeselectBadges()) return null;
+    const g = graphAtClient(clientX, clientY);
+    const k = zoomK();
+    const enlarge = viewScale(settings.enlarge);
+    let best: string | null = null;
+    let bestD = Infinity;
+    for (const n of liveEngineNodes()) {
+      if (!selectedSet.has(n.id) || n.x == null || n.y == null) continue;
+      const c = deselectBadgeCenter(n, k);
+      const d = Math.hypot(c.x - g.x, c.y - g.y);
+      if (d <= (deselectBadgePx(n, k, enlarge) + 2) / k && d < bestD) {
+        best = n.id;
+        bestD = d;
+      }
+    }
+    return best;
+  }
+
+  function nodesInLasso(points: Point[]) {
+    const region = lassoRegion(points);
+    if (region.length < 3) return [];
+    return liveEngineNodes().filter((n) => n.x != null && n.y != null && pointInPolygon(n.x, n.y, region));
+  }
+
   function selectedPositions() {
     return liveEngineNodes()
       .filter((n) => selectedSet.has(n.id) && n.x != null && n.y != null)
@@ -766,7 +833,7 @@ export default function GraphCanvas({
   return (
     <div
       ref={hostRef}
-      className={`graph-host absolute inset-0${placeArmed || connectArmed ? " is-draw" : ""}${gesture === "marquee" ? " is-select" : ""}${gesture === "group" ? " is-grab" : ""}${gesture === "pan" ? " is-pan" : ""}`}
+      className={`graph-host absolute inset-0${placeArmed || connectArmed ? " is-draw" : ""}${gesture === "marquee" ? " is-select" : ""}${gesture === "group" ? " is-grab" : ""}${gesture === "pan" ? " is-pan" : ""}${overBadge && !gesture ? " is-badge" : ""}`}
       onContextMenu={(e) => {
         e.preventDefault();
         const handledByFg = fgContextHandled.current;
@@ -806,6 +873,13 @@ export default function GraphCanvas({
         if (spaceHeld.current || e.altKey) return;
         const target = e.target as HTMLElement | null;
         if (target?.closest(".plus-wrap, .filter-panel, .site-left-rail, .left-panel-top, .left-panel-bottom, .canvas-tools, .view-compass, .history-panel, .info-panel, .item-actions, .edit-float, .ctx, .omp-header")) return;
+        const badgeId = deselectBadgeAt(e.clientX, e.clientY);
+        if (badgeId) {
+          skipBg.current = true;
+          setOverBadge(false);
+          onMarquee([badgeId], "subtract");
+          return;
+        }
         const hit = nodeAt(e.clientX, e.clientY);
         if (hit) {
           skipBg.current = true;
@@ -834,11 +908,8 @@ export default function GraphCanvas({
         skipBg.current = false;
         interaction.current = {
           type: "marquee",
-          x0: g.x,
-          y0: g.y,
-          x1: g.x,
-          y1: g.y,
-          additive: e.shiftKey,
+          points: [{ x: g.x, y: g.y }],
+          mode: e.shiftKey ? "add" : e.ctrlKey || e.metaKey ? "subtract" : "replace",
           sx0: e.clientX,
           sy0: e.clientY,
         };
@@ -848,14 +919,22 @@ export default function GraphCanvas({
       onPointerMove={(e) => {
         if (placeArmed || connectFrom) cursorGraph.current = graphAtClient(e.clientX, e.clientY);
         if (!interaction.current) {
-          onHover(nodeAt(e.clientX, e.clientY, 12)?.id ?? null);
+          const badge = deselectBadgeAt(e.clientX, e.clientY);
+          setOverBadge(badge != null);
+          onHover(badge ?? nodeAt(e.clientX, e.clientY, 12)?.id ?? null);
         }
         const it = interaction.current;
         if (!it) return;
         if (it.type === "marquee") {
           const g = graphAtClient(e.clientX, e.clientY);
-          it.x1 = g.x;
-          it.y1 = g.y;
+          const k = zoomK();
+          const last = it.points[it.points.length - 1];
+          if (!last || Math.hypot(g.x - last.x, g.y - last.y) > 4 / k) {
+            it.points.push({ x: g.x, y: g.y });
+          } else {
+            last.x = g.x;
+            last.y = g.y;
+          }
           if (Math.hypot(e.clientX - it.sx0, e.clientY - it.sy0) > 5) skipBg.current = true;
         } else if (it.type === "group") {
           const g = graphAtClient(e.clientX, e.clientY);
@@ -892,29 +971,37 @@ export default function GraphCanvas({
         const it = interaction.current;
         interaction.current = null;
         setGesture(spaceHeld.current ? "pan" : null);
+        if (!it && e.button === 0 && (connectArmed || placeArmed)) {
+          armedClickHandled.current = false;
+          skipBg.current = true;
+          if (handleGraphClick(e.clientX, e.clientY, e.shiftKey)) {
+            armedClickHandled.current = true;
+            return;
+          }
+          if (placeArmed) {
+            const g = graphAtClient(e.clientX, e.clientY);
+            onBackground(e.clientX, e.clientY, g);
+            armedClickHandled.current = true;
+          }
+          return;
+        }
         if (!it) return;
         if (it.type === "marquee") {
-          const k = zoomK();
-          if (Math.abs(it.x1 - it.x0) * k < 6 && Math.abs(it.y1 - it.y0) * k < 6) {
+          if (Math.hypot(e.clientX - it.sx0, e.clientY - it.sy0) < 6) {
             skipBg.current = true;
-            if (handleGraphClick(e.clientX, e.clientY, it.additive)) return;
+            if (handleGraphClick(e.clientX, e.clientY, it.mode === "add")) return;
             const g = graphAtClient(e.clientX, e.clientY);
             onBackground(e.clientX, e.clientY, g);
             return;
           }
-          const minX = Math.min(it.x0, it.x1);
-          const maxX = Math.max(it.x0, it.x1);
-          const minY = Math.min(it.y0, it.y1);
-          const maxY = Math.max(it.y0, it.y1);
-          const ids = liveEngineNodes()
-            .filter((n) => n.x != null && n.y != null && n.x >= minX && n.x <= maxX && n.y >= minY && n.y <= maxY)
-            .map((n) => n.id);
           skipBg.current = true;
-          onMarquee(ids, it.additive);
+          onMarquee(nodesInLasso(it.points).map((n) => n.id), it.mode);
         } else if (it.type === "group") {
+          releaseHeld(selectedSet);
           onGroupMoveEnd(selectedPositions());
         } else if (it.type === "drag" && it.moved) {
           const idSet = new Set(it.ids);
+          releaseHeld(idSet);
           onGroupMoveEnd(
             liveEngineNodes()
               .filter((n) => idSet.has(n.id) && n.x != null && n.y != null)
@@ -957,7 +1044,7 @@ export default function GraphCanvas({
       enableNodeDrag={false}
       enablePanInteraction={false}
       enableZoomInteraction={false}
-      enablePointerInteraction={false}
+      enablePointerInteraction={connectArmed || placeArmed}
       autoPauseRedraw={false}
       warmupTicks={settings.physics ? 20 : 0}
       nodeCanvasObjectMode={() => "replace"}
@@ -978,12 +1065,18 @@ export default function GraphCanvas({
       }}
       onNodeDragEnd={(n) => {
         if (selectedSet.has(n.id) && selectedSet.size > 1) {
+          releaseHeld(selectedSet);
           onGroupMoveEnd(selectedPositions());
           return;
         }
+        releaseHeld(new Set([n.id]));
         onDragEnd(n.id, n.x ?? 0, n.y ?? 0);
       }}
       onNodeClick={(n, ev) => {
+        if (armedClickHandled.current) {
+          armedClickHandled.current = false;
+          return;
+        }
         skipBg.current = true;
         if (placeArmed) return;
         if (connectArmed) {
@@ -1015,7 +1108,12 @@ export default function GraphCanvas({
       linkHoverPrecision={10}
       onBackgroundClick={(ev) => {
         if (ev.button !== 0) return;
+        if (armedClickHandled.current) {
+          armedClickHandled.current = false;
+          return;
+        }
         if (placeArmed) return;
+        if (connectArmed) return;
         if (skipBg.current) {
           skipBg.current = false;
           return;
@@ -1026,8 +1124,8 @@ export default function GraphCanvas({
       }}
       linkColor={(l) => {
         const e = linkEnds(l);
-        const src = nodes.find((n) => n.id === e.source);
-        const tgt = nodes.find((n) => n.id === e.target);
+        const src = nodeById.get(e.source);
+        const tgt = nodeById.get(e.target);
         const dim =
           (src && !isFiltered(src, search, settings.colorBy, filterOptions)) ||
           (tgt && !isFiltered(tgt, search, settings.colorBy, filterOptions));
@@ -1058,8 +1156,8 @@ export default function GraphCanvas({
       linkCanvasObjectMode={(l) => (l.arrows === "one" || l.arrows === "both" ? "after" : undefined)}
       linkCanvasObject={(link, ctx, globalScale) => {
         if (link.arrows !== "one" && link.arrows !== "both") return;
-        const src = typeof link.source === "object" ? link.source as GraphNode : nodes.find((n) => n.id === String(link.source));
-        const tgt = typeof link.target === "object" ? link.target as GraphNode : nodes.find((n) => n.id === String(link.target));
+        const src = typeof link.source === "object" ? link.source as GraphNode : nodeById.get(String(link.source));
+        const tgt = typeof link.target === "object" ? link.target as GraphNode : nodeById.get(String(link.target));
         if (!src || !tgt || src.x == null || src.y == null || tgt.x == null || tgt.y == null) return;
         const e = linkEnds(link);
         const amount = pulseAmountForLink(link);
@@ -1084,12 +1182,16 @@ export default function GraphCanvas({
         const nodeScale = viewScale(settings.enlarge);
         const cardScale = viewScale(settings.cardScale, nodeScale);
         const showCard = cardsAtZoom(Boolean(settings.cardInfo), globalScale);
+        const pickSlack = connectArmed || placeArmed ? 20 : 14;
         if (showCard) {
           const r = dotRadius(node, globalScale, nodeScale);
           const { w, h } = cardBox(node, globalScale, cardScale);
           ctx.fillRect((node.x ?? 0) - w / 2, (node.y ?? 0) + r + 6 / globalScale, w, h);
+          ctx.beginPath();
+          ctx.arc(node.x ?? 0, node.y ?? 0, nodePickRadius(node, globalScale, nodeScale, pickSlack), 0, Math.PI * 2);
+          ctx.fill();
         } else {
-          const r = dotRadius(node, globalScale, nodeScale) + 10 / globalScale;
+          const r = nodePickRadius(node, globalScale, nodeScale, pickSlack);
           ctx.beginPath();
           ctx.arc(node.x ?? 0, node.y ?? 0, r, 0, Math.PI * 2);
           ctx.fill();
@@ -1167,6 +1269,15 @@ export default function GraphCanvas({
           ctx.strokeStyle = connecting ? palette.connectRing : palette.ring;
           ctx.lineWidth = 1.2 / globalScale;
           ctx.stroke();
+        }
+        if (connectArmed && hovered && !connecting) {
+          ctx.beginPath();
+          ctx.arc(x, y, r + 4.5 / globalScale, 0, Math.PI * 2);
+          ctx.strokeStyle = palette.connectRing;
+          ctx.lineWidth = 2.4 / globalScale;
+          ctx.setLineDash([4 / globalScale, 3 / globalScale]);
+          ctx.stroke();
+          ctx.setLineDash([]);
         }
 
         if (overlayLabels()) {
@@ -1249,18 +1360,55 @@ export default function GraphCanvas({
       }}
       onRenderFramePost={(ctx, globalScale) => {
         const box = interaction.current;
-        if (box?.type === "marquee") {
-          const x = Math.min(box.x0, box.x1);
-          const y = Math.min(box.y0, box.y1);
-          const w = Math.abs(box.x1 - box.x0);
-          const h = Math.abs(box.y1 - box.y0);
+        if (box?.type === "marquee" && box.points.length >= 1) {
+          const pts = box.points;
+          const cross = findSelfIntersection(pts);
+          const region = lassoRegion(pts);
+          const subtract = box.mode === "subtract";
           ctx.save();
-          ctx.fillStyle = theme === "dark" ? "rgba(91, 155, 213, 0.14)" : "rgba(27, 58, 107, 0.08)";
-          ctx.strokeStyle = palette.ring;
+          ctx.fillStyle = subtract
+            ? "rgba(244, 63, 94, 0.12)"
+            : theme === "dark" ? "rgba(91, 155, 213, 0.14)" : "rgba(27, 58, 107, 0.08)";
+          ctx.strokeStyle = subtract ? "#f43f5e" : palette.ring;
           ctx.lineWidth = 1.1 / globalScale;
-          ctx.setLineDash([6 / globalScale, 4 / globalScale]);
-          ctx.fillRect(x, y, w, h);
-          ctx.strokeRect(x, y, w, h);
+          if (region.length >= 3) {
+            ctx.beginPath();
+            ctx.moveTo(region[0].x, region[0].y);
+            for (let i = 1; i < region.length; i++) ctx.lineTo(region[i].x, region[i].y);
+            ctx.closePath();
+            ctx.fill();
+          }
+          ctx.beginPath();
+          ctx.moveTo(pts[0].x, pts[0].y);
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+          ctx.setLineDash([]);
+          ctx.stroke();
+          if (!cross && pts.length >= 2) {
+            ctx.setLineDash([6 / globalScale, 4 / globalScale]);
+            ctx.beginPath();
+            ctx.moveTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+            ctx.lineTo(pts[0].x, pts[0].y);
+            ctx.stroke();
+          }
+          const tip = pts[pts.length - 1];
+          if (region.length >= 3 && tip) {
+            const count = nodesInLasso(pts).length;
+            const sign = box.mode === "add" ? "+" : subtract ? "−" : "";
+            const text = `${sign}${count} node${count === 1 ? "" : "s"}`;
+            ctx.setLineDash([]);
+            inScreenSpace(ctx, tip.x, tip.y, globalScale, () => {
+              ctx.font = "600 11px \"Segoe UI\", sans-serif";
+              const w = ctx.measureText(text).width + 12;
+              ctx.fillStyle = subtract ? "#be123c" : "rgba(27, 58, 107, 0.92)";
+              ctx.beginPath();
+              ctx.roundRect(12, 10, w, 20, 10);
+              ctx.fill();
+              ctx.fillStyle = "#f3f2f1";
+              ctx.textAlign = "left";
+              ctx.textBaseline = "middle";
+              ctx.fillText(text, 18, 20);
+            }, labelUnrotate());
+          }
           ctx.restore();
         } else if (selectedSet.size > 1) {
           const hull = selectionHull();
@@ -1273,6 +1421,30 @@ export default function GraphCanvas({
             ctx.fillRect(hull.x, hull.y, hull.w, hull.h);
             ctx.strokeRect(hull.x, hull.y, hull.w, hull.h);
             ctx.restore();
+          }
+          if (showDeselectBadges()) {
+            for (const n of liveEngineNodes()) {
+              if (!selectedSet.has(n.id) || n.x == null || n.y == null) continue;
+              const c = deselectBadgeCenter(n, globalScale);
+              const hot = n.id === hoveredId;
+              const br = deselectBadgePx(n, globalScale, viewScale(settings.enlarge));
+              inScreenSpace(ctx, c.x, c.y, globalScale, () => {
+                ctx.beginPath();
+                ctx.arc(0, 0, br, 0, Math.PI * 2);
+                ctx.fillStyle = hot ? "#9f1239" : "#be123c";
+                ctx.fill();
+                ctx.lineWidth = 1.25;
+                ctx.strokeStyle = palette.card;
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(-br * 0.5, 0);
+                ctx.lineTo(br * 0.5, 0);
+                ctx.lineWidth = Math.max(1.2, br * 0.26);
+                ctx.lineCap = "round";
+                ctx.strokeStyle = "#ffffff";
+                ctx.stroke();
+              });
+            }
           }
         }
         const cur = cursorGraph.current;

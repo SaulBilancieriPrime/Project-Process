@@ -1,4 +1,5 @@
-import { type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useStore } from "@tanstack/react-store";
 import { nodeColor } from "../graph/colors";
 import {
   STATUS_COLORS,
@@ -6,8 +7,10 @@ import {
   nodeWorkflowStatus,
 } from "../graph/workflowStatus";
 import { handleOverlayWheel } from "../lib/overlayScroll";
+import { draftStore } from "../store/drafts";
 import { cx, editFloat, field, fieldArea, fieldLabel, swatch, swatchOn } from "../styles";
 import type { ColorBy, GraphNode } from "../types";
+import DeferredTextField from "./DeferredTextField";
 import EmployeePicker from "./EmployeePicker";
 import SizePresetPicker from "./SizePresetPicker";
 
@@ -33,8 +36,30 @@ type Props = {
   onSave: (patch: Partial<NodeEditPatch>) => void;
 };
 
+const SAVED_FLASH_MS = 1600;
+
 export default function EditNodePanel({ node, colorBy, embedded = false, style, onSave }: Props) {
   const accent = nodeColor(node, colorBy);
+  const unsaved = useStore(draftStore, (s) => s.labels);
+  const [savedFlash, setSavedFlash] = useState(false);
+  const flashTimer = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (flashTimer.current) window.clearTimeout(flashTimer.current);
+  }, []);
+
+  function save(patch: Partial<NodeEditPatch>) {
+    onSave(patch);
+    setSavedFlash(true);
+    if (flashTimer.current) window.clearTimeout(flashTimer.current);
+    flashTimer.current = window.setTimeout(() => setSavedFlash(false), SAVED_FLASH_MS);
+  }
+
+  const status = unsaved.length
+    ? { tone: "text-amber-500", text: `Unsaved: ${unsaved.join(", ")}` }
+    : savedFlash
+      ? { tone: "text-emerald-500", text: "Saved" }
+      : { tone: "text-[var(--muted)]", text: "All changes saved" };
 
   return (
     <div
@@ -46,9 +71,16 @@ export default function EditNodePanel({ node, colorBy, embedded = false, style, 
       style={embedded ? style : { ...style, ["--edit-accent" as string]: accent }}
       onWheel={handleOverlayWheel}
     >
-      <h3 className="mt-0 mb-2 text-lg font-bold">Modify Node</h3>
+      <div className="mb-2 flex items-baseline justify-between gap-2">
+        <h3 className="m-0 text-lg font-bold">Modify Node</h3>
+        <span className={cx("text-[11px] font-semibold", status.tone)} role="status" aria-live="polite">
+          {status.text}
+        </span>
+      </div>
 
-      <label className={fieldLabel}>Status</label>
+      <label className={fieldLabel}>
+        Status <span className="font-normal normal-case tracking-normal">· saves instantly</span>
+      </label>
       <div className="mt-2.5 flex flex-wrap gap-1.5">
         {WORKFLOW_STATUS_META.map(({ id, label }) => {
           const c = STATUS_COLORS[id];
@@ -62,27 +94,44 @@ export default function EditNodePanel({ node, colorBy, embedded = false, style, 
               aria-pressed={active}
               className={cx(swatch, active && swatchOn)}
               style={{ background: c }}
-              onClick={() => onSave({ color: c })}
+              onClick={() => save({ color: c })}
             />
           );
         })}
       </div>
-      <label className={fieldLabel}>Title</label>
-      <input className={field} value={node.title} onChange={(e) => onSave({ title: e.target.value })} />
-      <label className={fieldLabel}>Description</label>
-      <textarea
+      <label className={fieldLabel} htmlFor={`title-${node.id}`}>
+        Title <span className="font-normal normal-case tracking-normal">· Enter to save, Esc to reset</span>
+      </label>
+      <DeferredTextField
+        id={`title-${node.id}`}
+        label="Title"
+        className={field}
+        value={node.title}
+        onCommit={(title) => save({ title })}
+      />
+      <label className={fieldLabel} htmlFor={`desc-${node.id}`}>
+        Description <span className="font-normal normal-case tracking-normal">· Ctrl+Enter to save</span>
+      </label>
+      <DeferredTextField
+        id={`desc-${node.id}`}
+        label="Description"
+        multiline
         className={fieldArea}
         value={node.description}
-        onChange={(e) => onSave({ description: e.target.value })}
+        onCommit={(description) => save({ description })}
       />
-      <label className={fieldLabel}>Assigned employee</label>
+      <label className={fieldLabel}>
+        Assigned employee <span className="font-normal normal-case tracking-normal">· saves instantly</span>
+      </label>
       <EmployeePicker
         name={node.employee ?? ""}
         email={node.employeeEmail ?? ""}
-        onChange={(next) => onSave({ employee: next.name, employeeEmail: next.email })}
+        onChange={(next) => save({ employee: next.name, employeeEmail: next.email })}
       />
-      <label className={fieldLabel}>Size</label>
-      <SizePresetPicker value={node.size} onSelect={(size) => onSave({ size })} />
+      <label className={fieldLabel}>
+        Size <span className="font-normal normal-case tracking-normal">· saves instantly</span>
+      </label>
+      <SizePresetPicker value={node.size} onSelect={(size) => save({ size })} />
     </div>
   );
 }

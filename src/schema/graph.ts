@@ -111,7 +111,10 @@ export const DEFAULT_SETTINGS: GraphSettings = graphSettingsSchema.parse({});
 export function parseGraphDocument(data: unknown): GraphDocument {
   const raw = graphDocumentInputSchema.parse(data);
   return {
-    nodes: raw.nodes.map((node) => graphNodeSchema.parse(node)),
+    nodes: raw.nodes.map((node) => {
+      const parsed = graphNodeSchema.parse(node);
+      return { ...parsed, fx: undefined, fy: undefined };
+    }),
     links: raw.links.flatMap((link) => {
       const parsed = graphLinkSchema.safeParse(link);
       return parsed.success ? [parsed.data] : [];

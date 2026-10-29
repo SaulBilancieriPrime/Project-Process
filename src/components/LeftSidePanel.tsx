@@ -19,6 +19,7 @@ type Props = {
   onStatusFilters: (v: WorkflowStatus[]) => void;
   onEmployeeFilter: (v: string | null) => void;
   onSettings: (patch: Partial<GraphSettings>) => void;
+  onResetSettings: () => void;
   onFit: () => void;
   onReorg: () => void;
   onTogglePhysics: () => void;
@@ -38,6 +39,7 @@ export default function LeftSidePanel({
   onStatusFilters,
   onEmployeeFilter,
   onSettings,
+  onResetSettings,
   onFit,
   onReorg,
   onTogglePhysics,
@@ -60,6 +62,7 @@ export default function LeftSidePanel({
           onStatusFilters={onStatusFilters}
           onEmployeeFilter={onEmployeeFilter}
           onSettings={onSettings}
+          onResetSettings={onResetSettings}
           onFit={onFit}
           onReorg={onReorg}
           onTogglePhysics={onTogglePhysics}
